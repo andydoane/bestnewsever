@@ -147,7 +147,9 @@ const cueImages = {
     boys: "assets/images/boys.png",
     girls: "assets/images/girls.png",
     happy: "assets/images/happy.png",
-    sad: "assets/images/sad.png"
+    sad: "assets/images/sad.png",
+    leaders1: "assets/images/leaders_1.png",
+    leaders2: "assets/images/leaders_2.png"
 };
 
 const colorClasses = [
@@ -561,42 +563,207 @@ function beginSlides() {
     renderSlideScreen(false);
 }
 
-function getSlideSource(slideIndex) {
-    if (slideIndex >= 0 && slideIndex < poemSlideFiles.length) {
-        return poemSlideFiles[slideIndex];
+function getCueSlide(activityId, poemIndex) {
+    const isFinalPoemSlide = poemIndex === poemSlideFiles.length - 1;
+
+    if (activityId === 6) {
+        if (isFinalPoemSlide) {
+            return {
+                label: "Everybody!",
+                images: [cueImages.boys, cueImages.girls]
+            };
+        }
+
+        return poemIndex % 2 === 0
+            ? { label: "Boys!", images: [cueImages.boys] }
+            : { label: "Girls!", images: [cueImages.girls] };
     }
 
-    if (slideIndex === poemSlideFiles.length) {
-        return titleImage;
+    if (activityId === 7) {
+        if (isFinalPoemSlide) {
+            return {
+                label: "Everybody!",
+                images: [cueImages.boys, cueImages.girls, cueImages.leaders1, cueImages.leaders2]
+            };
+        }
+
+        return poemIndex % 2 === 0
+            ? { label: "Leaders!", images: [cueImages.leaders1, cueImages.leaders2] }
+            : { label: "Kids!", images: [cueImages.boys, cueImages.girls] };
+    }
+
+    if (activityId === 24) {
+        return poemIndex % 2 === 0
+            ? { label: "Say it happy!", images: [cueImages.happy] }
+            : { label: "Say it sad!", images: [cueImages.sad] };
     }
 
     return null;
+}
+
+function buildSlideSequence(activityId) {
+    const sequence = [];
+
+    poemSlideFiles.forEach((source, poemIndex) => {
+        const cue = getCueSlide(activityId, poemIndex);
+        if (cue) {
+            sequence.push({
+                type: "cue",
+                label: cue.label,
+                images: cue.images,
+                isFinalTitle: false
+            });
+        }
+
+        sequence.push({
+            type: "image",
+            source,
+            alt: `Best News Ever poem slide ${poemIndex + 1}`,
+            isFinalTitle: false
+        });
+    });
+
+    sequence.push({
+        type: "image",
+        source: titleImage,
+        alt: "Best News Ever",
+        isFinalTitle: true
+    });
+
+    return sequence;
+}
+
+function createSlideFrame(slide, enteringClass = "") {
+    if (slide.type === "cue") {
+        const frame = document.createElement("div");
+        frame.className = `slide-frame cue-slide current ${enteringClass}`.trim();
+
+        const imageMarkup = slide.images.map(source => `
+            <img class="cue-slide-image" src="${source}" alt="" onerror="this.style.display='none'">
+        `).join("");
+
+        frame.innerHTML = `
+            <div class="cue-slide-content">
+                <div class="cue-slide-images ${slide.images.length > 2 ? "many" : ""}">
+                    ${imageMarkup}
+                </div>
+                <div class="cue-slide-text">${slide.label}</div>
+            </div>
+        `;
+
+        return frame;
+    }
+
+    const image = document.createElement("img");
+    image.className = `slide-frame image-slide current ${enteringClass}`.trim();
+    image.src = slide.source;
+    image.alt = slide.alt;
+    image.draggable = false;
+    image.addEventListener("load", positionSlideFullscreenButton, { once: true });
+    return image;
+}
+
+function syncSlideFullscreenButton(show) {
+    const slideScreen = app.querySelector(".slide-screen");
+    if (!slideScreen) {
+        return;
+    }
+
+    let button = document.getElementById("slideFullscreenButton");
+
+    if (!show) {
+        button?.remove();
+        return;
+    }
+
+    if (!button) {
+        button = document.createElement("button");
+        button.id = "slideFullscreenButton";
+        button.className = "slide-fullscreen-button";
+        button.type = "button";
+        button.title = "Fullscreen";
+        button.setAttribute("aria-label", "Fullscreen");
+        button.textContent = "⛶";
+        button.addEventListener("click", toggleFullscreen);
+        slideScreen.appendChild(button);
+    }
+
+    window.requestAnimationFrame(positionSlideFullscreenButton);
+}
+
+function positionSlideFullscreenButton() {
+    const button = document.getElementById("slideFullscreenButton");
+    const stage = document.getElementById("slideStage");
+    const currentFrame = stage?.querySelector(".slide-frame.current");
+
+    if (!button || !stage || !currentFrame) {
+        return;
+    }
+
+    const margin = Math.max(14, Math.min(28, window.innerWidth * 0.015));
+    let top = margin;
+    let right = margin;
+
+    if (
+        currentFrame instanceof HTMLImageElement &&
+        currentFrame.complete &&
+        currentFrame.naturalWidth > 0 &&
+        currentFrame.naturalHeight > 0
+    ) {
+        const stageWidth = stage.clientWidth;
+        const stageHeight = stage.clientHeight;
+        const imageRatio = currentFrame.naturalWidth / currentFrame.naturalHeight;
+        const stageRatio = stageWidth / stageHeight;
+
+        let displayedWidth;
+        let displayedHeight;
+        let topOffset;
+        let rightOffset;
+
+        if (imageRatio > stageRatio) {
+            displayedWidth = stageWidth;
+            displayedHeight = displayedWidth / imageRatio;
+            topOffset = (stageHeight - displayedHeight) / 2;
+            rightOffset = 0;
+        } else {
+            displayedHeight = stageHeight;
+            displayedWidth = displayedHeight * imageRatio;
+            topOffset = 0;
+            rightOffset = (stageWidth - displayedWidth) / 2;
+        }
+
+        top = topOffset + margin;
+        right = rightOffset + margin;
+    }
+
+    button.style.top = `${top}px`;
+    button.style.right = `${right}px`;
 }
 
 function renderSlideScreen(animateIn = true) {
     stopHighlighting();
 
     const slideIndex = Number(state.currentSession?.slideIndex) || 0;
-    const source = getSlideSource(slideIndex);
+    const sequence = buildSlideSequence(state.currentSession?.activityId);
+    const slide = sequence[slideIndex];
 
-    if (!source) {
+    if (!slide) {
         return;
     }
 
-    const isFinalTitle = slideIndex === poemSlideFiles.length;
+    const isFinalTitle = Boolean(slide.isFinalTitle);
     currentView = isFinalTitle ? "final" : "slides";
     setChromeMode(currentView);
 
     app.innerHTML = `
         <section class="app-screen slide-screen ${animateIn ? "fade-in" : ""}">
-            <div id="slideStage" class="slide-stage">
-                <img class="slide-frame current" src="${source}" alt="${isFinalTitle ? "Best News Ever" : `Best News Ever poem slide ${slideIndex + 1}`}" draggable="false">
-            </div>
-            <div id="cueMount"></div>
+            <div id="slideStage" class="slide-stage"></div>
         </section>
     `;
 
-    renderCueOverlay(state.currentSession.activityId, slideIndex);
+    const stage = document.getElementById("slideStage");
+    stage.appendChild(createSlideFrame(slide));
+    syncSlideFullscreenButton(!isFinalTitle);
 
     if (isFinalTitle) {
         completeCurrentActivity();
@@ -608,8 +775,9 @@ function moveSlide(direction) {
         return;
     }
 
+    const sequence = buildSlideSequence(state.currentSession.activityId);
     const currentIndex = Number(state.currentSession.slideIndex) || 0;
-    const finalIndex = poemSlideFiles.length;
+    const finalIndex = sequence.length - 1;
     const nextIndex = currentIndex + direction;
 
     if (direction > 0 && currentIndex >= finalIndex) {
@@ -621,10 +789,10 @@ function moveSlide(direction) {
     }
 
     const stage = document.getElementById("slideStage");
-    const currentImage = stage?.querySelector(".slide-frame.current");
-    const nextSource = getSlideSource(nextIndex);
+    const currentFrame = stage?.querySelector(".slide-frame.current");
+    const nextSlide = sequence[nextIndex];
 
-    if (!stage || !currentImage || !nextSource) {
+    if (!stage || !currentFrame || !nextSlide) {
         state.currentSession.slideIndex = nextIndex;
         saveState();
         renderSlideScreen(false);
@@ -632,105 +800,41 @@ function moveSlide(direction) {
     }
 
     slideTransitioning = true;
-    const nextImage = document.createElement("img");
-    nextImage.className = `slide-frame current ${direction > 0 ? "from-right" : "from-left"}`;
-    nextImage.src = nextSource;
-    nextImage.alt = nextIndex === finalIndex
-        ? "Best News Ever"
-        : `Best News Ever poem slide ${nextIndex + 1}`;
-    nextImage.draggable = false;
-    stage.appendChild(nextImage);
-
-    const cueMount = document.getElementById("cueMount");
-    if (cueMount) {
-        cueMount.innerHTML = "";
-    }
+    const nextFrame = createSlideFrame(nextSlide, direction > 0 ? "from-right" : "from-left");
+    stage.appendChild(nextFrame);
 
     window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
-            currentImage.classList.add("is-animating");
-            nextImage.classList.add("is-animating");
-            currentImage.style.transform = direction > 0 ? "translateX(-100%)" : "translateX(100%)";
-            nextImage.style.transform = "translateX(0)";
+            currentFrame.classList.add("is-animating");
+            nextFrame.classList.add("is-animating");
+            currentFrame.style.transform = direction > 0 ? "translateX(-100%)" : "translateX(100%)";
+            nextFrame.style.transform = "translateX(0)";
         });
     });
 
     window.setTimeout(() => {
-        currentImage.remove();
-        nextImage.classList.remove("from-right", "from-left", "is-animating");
-        nextImage.style.transform = "translateX(0)";
+        currentFrame.remove();
+        nextFrame.classList.remove("from-right", "from-left", "is-animating");
+        nextFrame.style.transform = "translateX(0)";
 
         state.currentSession.slideIndex = nextIndex;
         saveState();
-        renderCueOverlay(state.currentSession.activityId, nextIndex);
 
-        if (nextIndex === finalIndex) {
+        if (nextSlide.isFinalTitle) {
             currentView = "final";
             setChromeMode("final");
+            syncSlideFullscreenButton(false);
             completeCurrentActivity();
         } else {
             currentView = "slides";
             setChromeMode("slides");
+            syncSlideFullscreenButton(true);
         }
 
         slideTransitioning = false;
     }, SLIDE_TRANSITION_MS + 40);
 }
 
-function renderCueOverlay(activityId, slideIndex) {
-    const cueMount = document.getElementById("cueMount");
-    if (!cueMount || slideIndex < 0 || slideIndex >= poemSlideFiles.length) {
-        return;
-    }
-
-    const cue = getCueForSlide(activityId, slideIndex);
-    if (!cue) {
-        return;
-    }
-
-    const imageMarkup = cue.image
-        ? `<img class="cue-image" src="${cue.image}" alt="" onerror="this.style.display='none'">`
-        : "";
-
-    cueMount.innerHTML = `
-        <div class="cue-box">
-            ${imageMarkup}
-            <div class="cue-label">${cue.label}</div>
-        </div>
-    `;
-}
-
-function getCueForSlide(activityId, slideIndex) {
-    const isFinalPoemSlide = slideIndex === poemSlideFiles.length - 1;
-
-    if (activityId === 6) {
-        if (isFinalPoemSlide) {
-            return { label: "EVERYBODY!", image: null };
-        }
-
-        return slideIndex % 2 === 0
-            ? { label: "BOYS!", image: cueImages.boys }
-            : { label: "GIRLS!", image: cueImages.girls };
-    }
-
-    if (activityId === 7) {
-        if (isFinalPoemSlide) {
-            return { label: "EVERYBODY!", image: null };
-        }
-
-        return slideIndex % 2 === 0
-            ? { label: "LEADERS!", image: null }
-            : { label: "KIDS!", image: null };
-    }
-
-    if (activityId === 24) {
-        return slideIndex % 2 === 0
-            ? { label: "HAPPY!", image: cueImages.happy }
-            : { label: "SAD!", image: cueImages.sad };
-    }
-
-    return null;
-}
 
 function completeCurrentActivity() {
     const session = state.currentSession;
