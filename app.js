@@ -140,6 +140,23 @@ const poemSlideFiles = [
     "assets/images/slide_07.png"
 ];
 
+const highlightedPoemSlideFiles = [
+    "assets/images/slide_01_alt.png",
+    "assets/images/slide_02_alt.png",
+    "assets/images/slide_03_alt.png",
+    "assets/images/slide_04_alt.png",
+    "assets/images/slide_05_alt.png",
+    "assets/images/slide_06_alt.png",
+    "assets/images/slide_07_alt.png"
+];
+
+const activityAudioFiles = {
+    17: "assets/audio/beat_loop.mp3",
+    23: "assets/audio/march_loop.mp3"
+};
+
+const AUDIO_FADE_MS = 1200;
+
 const titleImage = "assets/images/title.png";
 const smileyImage = "assets/images/smiley.png";
 
@@ -207,6 +224,9 @@ let introTimerIds = [];
 let currentView = "boot";
 
 let finalRevealRunning = false;
+
+let activityAudio = null;
+let audioFadeFrame = null;
 
 function getDefaultState() {
     return {
@@ -355,9 +375,125 @@ function setChromeMode(mode) {
 }
 
 function preloadAssets() {
-    [titleImage, smileyImage, ...poemSlideFiles, ...Object.values(cueImages)].forEach(source => {
+    [
+        titleImage,
+        smileyImage,
+        ...poemSlideFiles,
+        ...highlightedPoemSlideFiles,
+        ...Object.values(cueImages)
+    ].forEach(source => {
         const image = new Image();
         image.src = source;
+    });
+}
+
+function getPoemSlideFilesForActivity(activityId) {
+    if (activityId === 19 || activityId === 20) {
+        return highlightedPoemSlideFiles;
+    }
+
+    return poemSlideFiles;
+}
+
+function clearAudioFade() {
+    if (audioFadeFrame !== null) {
+        window.cancelAnimationFrame(audioFadeFrame);
+        audioFadeFrame = null;
+    }
+}
+
+function stopActivityAudio() {
+    clearAudioFade();
+
+    if (!activityAudio) {
+        return;
+    }
+
+    activityAudio.pause();
+
+    try {
+        activityAudio.currentTime = 0;
+    } catch (error) {
+        // Some browsers may not allow resetting until audio metadata is ready.
+    }
+
+    activityAudio.volume = 1;
+    activityAudio = null;
+}
+
+function startActivityAudio(activityId) {
+    const source = activityAudioFiles[activityId];
+
+    stopActivityAudio();
+
+    if (!source) {
+        return;
+    }
+
+    activityAudio = new Audio(source);
+    activityAudio.preload = "auto";
+    activityAudio.loop = false;
+    activityAudio.volume = 1;
+
+    activityAudio.play().catch(error => {
+        console.warn("Could not start activity audio.", error);
+    });
+}
+
+function fadeOutActivityAudio(duration = AUDIO_FADE_MS) {
+    if (!activityAudio || activityAudio.paused) {
+        return;
+    }
+
+    clearAudioFade();
+
+    const audio = activityAudio;
+    const startingVolume = audio.volume;
+    const startedAt = performance.now();
+
+    function fadeStep(now) {
+        if (audio !== activityAudio) {
+            return;
+        }
+
+        const progress = Math.min((now - startedAt) / duration, 1);
+        audio.volume = startingVolume * (1 - progress);
+
+        if (progress < 1) {
+            audioFadeFrame = window.requestAnimationFrame(fadeStep);
+            return;
+        }
+
+        audio.volume = 0;
+        audio.pause();
+        audioFadeFrame = null;
+    }
+
+    audioFadeFrame = window.requestAnimationFrame(fadeStep);
+}
+
+function resumeActivityAudio(activityId) {
+    const source = activityAudioFiles[activityId];
+
+    if (!source) {
+        return;
+    }
+
+    clearAudioFade();
+
+    if (!activityAudio) {
+        startActivityAudio(activityId);
+        return;
+    }
+
+    if (activityAudio.ended) {
+        activityAudio.currentTime = 0;
+    }
+
+    activityAudio.volume = 1;
+
+    activityAudio.play().catch(error => {
+        console.warn("Could not resume activity audio.", error);
     });
 }
 
@@ -803,6 +939,9 @@ function beginSlides() {
 
     state.currentSession.phase = "slides";
     state.currentSession.slideIndex = 0;
+
+    startActivityAudio(state.currentSession.activityId);
+
     saveState();
     renderSlideScreen(false);
 }
@@ -847,8 +986,9 @@ function getCueSlide(activityId, poemIndex) {
 
 function buildSlideSequence(activityId) {
     const sequence = [];
+    const activePoemSlideFiles = getPoemSlideFilesForActivity(activityId);
 
-    poemSlideFiles.forEach((source, poemIndex) => {
+    activePoemSlideFiles.forEach((source, poemIndex) => {
         const cue = getCueSlide(activityId, poemIndex);
         if (cue) {
             sequence.push({
@@ -1003,6 +1143,7 @@ function renderSlideScreen(animateIn = true) {
     syncSlideFullscreenButton(!isFinalTitle);
 
     if (isFinalTitle) {
+        fadeOutActivityAudio();
         completeCurrentActivity();
     }
 }
@@ -1027,6 +1168,7 @@ function moveSlide(direction) {
 
     const stage = document.getElementById("slideStage");
     const currentFrame = stage?.querySelector(".slide-frame.current");
+    const currentSlide = sequence[currentIndex];
     const nextSlide = sequence[nextIndex];
 
     if (!stage || !currentFrame || !nextSlide) {
@@ -1034,6 +1176,18 @@ function moveSlide(direction) {
         saveState();
         renderSlideScreen(false);
         return;
+    }
+
+    if (direction > 0 && nextSlide.isFinalTitle) {
+        fadeOutActivityAudio();
+    }
+
+    if (
+        direction < 0 &&
+        currentSlide?.isFinalTitle &&
+        !nextSlide.isFinalTitle
+    ) {
+        resumeActivityAudio(state.currentSession.activityId);
     }
 
     slideTransitioning = true;
@@ -1099,6 +1253,7 @@ function restartProcess() {
     stopHighlighting();
     slideTransitioning = false;
     finalRevealRunning = false;
+    stopActivityAudio();
 
     state.currentSession = null;
 
