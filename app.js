@@ -143,6 +143,12 @@ const poemSlideFiles = [
 const titleImage = "assets/images/title.png";
 const smileyImage = "assets/images/smiley.png";
 
+const slideReferenceImage = new Image();
+slideReferenceImage.src = poemSlideFiles[0];
+slideReferenceImage.addEventListener("load", () => {
+    positionSlideFullscreenButton();
+});
+
 const cueImages = {
     boys: "assets/images/boys.png",
     girls: "assets/images/girls.png",
@@ -694,50 +700,43 @@ function syncSlideFullscreenButton(show) {
 function positionSlideFullscreenButton() {
     const button = document.getElementById("slideFullscreenButton");
     const stage = document.getElementById("slideStage");
-    const currentFrame = stage?.querySelector(".slide-frame.current");
 
-    if (!button || !stage || !currentFrame) {
+    if (!button || !stage) {
         return;
     }
 
     const margin = Math.max(14, Math.min(28, window.innerWidth * 0.015));
-    let top = margin;
-    let right = margin;
+    const stageWidth = stage.clientWidth;
+    const stageHeight = stage.clientHeight;
 
-    if (
-        currentFrame instanceof HTMLImageElement &&
-        currentFrame.complete &&
-        currentFrame.naturalWidth > 0 &&
-        currentFrame.naturalHeight > 0
-    ) {
-        const stageWidth = stage.clientWidth;
-        const stageHeight = stage.clientHeight;
-        const imageRatio = currentFrame.naturalWidth / currentFrame.naturalHeight;
-        const stageRatio = stageWidth / stageHeight;
+    const imageRatio =
+        slideReferenceImage.complete &&
+        slideReferenceImage.naturalWidth > 0 &&
+        slideReferenceImage.naturalHeight > 0
+            ? slideReferenceImage.naturalWidth / slideReferenceImage.naturalHeight
+            : 16 / 9;
 
-        let displayedWidth;
-        let displayedHeight;
-        let topOffset;
-        let rightOffset;
+    const stageRatio = stageWidth / stageHeight;
 
-        if (imageRatio > stageRatio) {
-            displayedWidth = stageWidth;
-            displayedHeight = displayedWidth / imageRatio;
-            topOffset = (stageHeight - displayedHeight) / 2;
-            rightOffset = 0;
-        } else {
-            displayedHeight = stageHeight;
-            displayedWidth = displayedHeight * imageRatio;
-            topOffset = 0;
-            rightOffset = (stageWidth - displayedWidth) / 2;
-        }
+    let displayedWidth;
+    let displayedHeight;
+    let topOffset;
+    let rightOffset;
 
-        top = topOffset + margin;
-        right = rightOffset + margin;
+    if (imageRatio > stageRatio) {
+        displayedWidth = stageWidth;
+        displayedHeight = displayedWidth / imageRatio;
+        topOffset = (stageHeight - displayedHeight) / 2;
+        rightOffset = 0;
+    } else {
+        displayedHeight = stageHeight;
+        displayedWidth = displayedHeight * imageRatio;
+        topOffset = 0;
+        rightOffset = (stageWidth - displayedWidth) / 2;
     }
 
-    button.style.top = `${top}px`;
-    button.style.right = `${right}px`;
+    button.style.top = `${topOffset + margin}px`;
+    button.style.right = `${rightOffset + margin}px`;
 }
 
 function renderSlideScreen(animateIn = true) {
