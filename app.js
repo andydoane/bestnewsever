@@ -167,6 +167,22 @@ const colorClasses = [
     "color-5"
 ];
 
+const activityColorValues = [
+    "#ff5a51",
+    "#ffa351",
+    "#ffc751",
+    "#a7cb6f",
+    "#40b9c5",
+    "#7f66c6"
+];
+
+const fixedBoardColorIds = [
+    0, 1, 2, 3, 4, 5,
+    3, 4, 5, 0, 1, 2,
+    0, 1, 2, 3, 4, 5,
+    3, 4, 5, 0, 1, 2
+];
+
 const app = document.getElementById("app");
 const overlayControls = document.getElementById("overlayControls");
 const fullscreenButton = document.getElementById("fullscreenButton");
@@ -224,12 +240,24 @@ function saveState() {
 
 function normalizeState() {
     state.completed = [...new Set(state.completed.filter(isValidActivityId))];
+    state.wildCardMode = false;
 
-    if (!state.wildCardMode && state.completed.length >= 23) {
-        state.wildCardMode = true;
+    if (
+        state.currentSession &&
+        !isValidActivityId(state.currentSession.activityId) &&
+        state.currentSession.activityId !== null
+    ) {
+        state.currentSession = null;
     }
 
-    if (state.currentSession && !isValidActivityId(state.currentSession.activityId) && state.currentSession.activityId !== null) {
+    if (
+        state.currentSession &&
+        state.currentSession.phase === "selecting" &&
+        (
+            !Array.isArray(state.currentSession.boardIds) ||
+            state.currentSession.boardIds.length !== activities.length
+        )
+    ) {
         state.currentSession = null;
     }
 
@@ -320,7 +348,7 @@ function showRestartButton(show) {
 }
 
 function setChromeMode(mode) {
-    showOverlayControls(["prompt", "selection", "winner"].includes(mode));
+    showOverlayControls(["prompt", "finalPrompt", "selection", "winner"].includes(mode));
     showRestartButton(mode === "final");
 }
 
@@ -331,11 +359,27 @@ function preloadAssets() {
     });
 }
 
+function resetFinishedCycleForNewRun() {
+    if (state.completed.length < activities.length) {
+        return false;
+    }
+
+    state.completed = [];
+    state.wildCardMode = false;
+    state.currentSession = null;
+    saveState();
+
+    return true;
+}
+
 function bootApp() {
     normalizeState();
+
+    const startedNewCycle = resetFinishedCycleForNewRun();
+
     preloadAssets();
 
-    if (state.currentSession) {
+    if (!startedNewCycle && state.currentSession) {
         renderFromState();
     } else {
         playIntro();
@@ -384,30 +428,35 @@ function renderPrompt() {
     document.getElementById("promptButton").addEventListener("click", handleAdvance);
 }
 
+function renderFinalActivityPrompt() {
+    currentView = "finalPrompt";
+    clearIntroTimers();
+    stopHighlighting();
+    setChromeMode("finalPrompt");
+
+    app.innerHTML = `
+        <section class="app-screen prompt-screen fade-in">
+            <h1 class="prompt-title">There's only one activity left!<br>Which one is it?</h1>
+            <button id="finalActivityPromptButton" class="prompt-button" type="button">PRESS BUTTON</button>
+        </section>
+    `;
+
+    document.getElementById("finalActivityPromptButton").addEventListener("click", handleAdvance);
+}
+
 function buildBoardIds() {
-    if (!state.wildCardMode && state.completed.length >= 23) {
-        state.wildCardMode = true;
-        saveState();
-    }
-
-    if (state.wildCardMode) {
-        return activities.map(activity => activity.id);
-    }
-
-    const remaining = activities.filter(activity => !state.completed.includes(activity.id));
-    return shuffle(remaining).slice(0, 9).map(activity => activity.id);
+    return activities.map(activity => activity.id);
 }
 
 function startSelectionSession() {
-    const boardIds = buildBoardIds();
-    const dimensions = getGridDimensions(boardIds.length, state.wildCardMode);
-    const colorIds = buildColorIds(boardIds.length, dimensions.cols);
+    finalRevealRunning = false;
 
     state.currentSession = {
         phase: "selecting",
         sessionDate: getLocalDateKey(),
-        boardIds,
-        colorIds,
+        boardIds: buildBoardIds(),
+        colorIds: [...fixedBoardColorIds],
+        finalRound: false,
         activityId: null,
         slideIndex: 0
     };
@@ -416,37 +465,60 @@ function startSelectionSession() {
     renderSelection();
 }
 
+function startFinalSelectionSession() {
+    finalRevealRunning = false;
+
+    state.currentSession = {
+        phase: "selecting",
+        sessionDate: getLocalDateKey(),
+        boardIds: buildBoardIds(),
+        colorIds: [...fixedBoardColorIds],
+        finalRound: true,
+        activityId: null,
+        slideIndex: 0
+    };
+
+    saveState();
+    renderSelection();
+}
+
+
 function renderSelection() {
     currentView = "selection";
     stopHighlighting();
     setChromeMode("selection");
 
-    const boardIds = Array.isArray(state.currentSession.boardIds)
-        ? state.currentSession.boardIds
-        : buildBoardIds();
+    const finalRound = Boolean(state.currentSession.finalRound);
+    const boardIds = buildBoardIds();
+    const colorIds = [...fixedBoardColorIds];
 
-    const dimensions = getGridDimensions(boardIds.length, state.wildCardMode);
-    let colorIds = Array.isArray(state.currentSession.colorIds)
-        ? state.currentSession.colorIds
-        : [];
-
-    if (colorIds.length !== boardIds.length) {
-        colorIds = buildColorIds(boardIds.length, dimensions.cols);
-        state.currentSession.colorIds = colorIds;
-        saveState();
-    }
+    state.currentSession.boardIds = boardIds;
+    state.currentSession.colorIds = colorIds;
+    saveState();
 
     const cards = boardIds.map((id, index) => {
         const activity = getActivity(id);
-        const colorClass = colorClasses[colorIds[index]];
+        const colorId = colorIds[index];
+        const colorClass = colorClasses[colorId];
+        const isCompleted = state.completed.includes(id);
+        const completedClass = isCompleted && !finalRound ? " completed" : "";
+        const completedMark = isCompleted && !finalRound
+            ? '<span class="completed-mark" aria-hidden="true">✕</span>'
+            : "";
+
         return `
-            <button class="activity-card ${colorClass}" type="button" data-activity-id="${activity.id}" data-index="${index}">
+            <button
+                class="activity-card ${colorClass}${completedClass}"
+                type="button"
+                data-activity-id="${activity.id}"
+                data-index="${index}"
+                data-color="${activityColorValues[colorId]}"
+            >
                 <span class="activity-title">${activity.title}</span>
+                ${completedMark}
             </button>
         `;
     }).join("");
-
-    const gridClass = state.wildCardMode ? "wild" : "normal";
 
     app.innerHTML = `
         <section class="app-screen selection-screen fade-in">
@@ -455,7 +527,7 @@ function renderSelection() {
                     <img class="smiley-image" src="${smileyImage}" alt="" onerror="this.style.display='none'">
                 </div>
 
-                <div id="activityGrid" class="activity-grid ${gridClass}" style="--cols: ${dimensions.cols}; --rows: ${dimensions.rows};">
+                <div id="activityGrid" class="activity-grid full">
                     ${cards}
                 </div>
 
@@ -468,6 +540,12 @@ function renderSelection() {
 
     document.querySelectorAll(".activity-card").forEach(card => {
         card.addEventListener("click", () => {
+            const activityId = Number(card.dataset.activityId);
+
+            if (!finalRound && state.completed.includes(activityId)) {
+                return;
+            }
+
             highlightedIndex = Number(card.dataset.index);
             selectHighlightedActivity();
         });
@@ -479,23 +557,37 @@ function renderSelection() {
 function startHighlighting() {
     stopHighlighting();
 
-    const cards = [...document.querySelectorAll(".activity-card")];
-    if (!cards.length) {
+    const allCards = [...document.querySelectorAll(".activity-card")];
+    if (!allCards.length) {
+        return;
+    }
+
+    const finalRound = Boolean(state.currentSession?.finalRound);
+
+    const eligibleCards = finalRound
+        ? allCards
+        : allCards.filter(card => {
+            const activityId = Number(card.dataset.activityId);
+            return !state.completed.includes(activityId);
+        });
+
+    if (!eligibleCards.length) {
         return;
     }
 
     function moveHighlight() {
-        cards.forEach(card => card.classList.remove("active"));
+        allCards.forEach(card => card.classList.remove("active"));
 
-        let nextIndex = Math.floor(Math.random() * cards.length);
-        if (cards.length > 1) {
-            while (nextIndex === highlightedIndex) {
-                nextIndex = Math.floor(Math.random() * cards.length);
+        let nextCard = eligibleCards[Math.floor(Math.random() * eligibleCards.length)];
+
+        if (eligibleCards.length > 1) {
+            while (Number(nextCard.dataset.index) === highlightedIndex) {
+                nextCard = eligibleCards[Math.floor(Math.random() * eligibleCards.length)];
             }
         }
 
-        highlightedIndex = nextIndex;
-        cards[highlightedIndex].classList.add("active");
+        highlightedIndex = Number(nextCard.dataset.index);
+        nextCard.classList.add("active");
     }
 
     moveHighlight();
@@ -510,18 +602,32 @@ function stopHighlighting() {
 }
 
 function selectHighlightedActivity() {
+    if (finalRevealRunning) {
+        return;
+    }
+
     const cards = [...document.querySelectorAll(".activity-card")];
     if (!cards.length || highlightedIndex < 0 || !cards[highlightedIndex]) {
+        return;
+    }
+
+    if (state.currentSession?.finalRound) {
+        startFinalReveal();
+        return;
+    }
+
+    const selectedCard = cards[highlightedIndex];
+    const activityId = Number(selectedCard.dataset.activityId);
+
+    if (state.completed.includes(activityId)) {
         return;
     }
 
     stopHighlighting();
 
     cards.forEach(card => card.classList.remove("active"));
-    const selectedCard = cards[highlightedIndex];
     selectedCard.classList.add("locked");
 
-    const activityId = Number(selectedCard.dataset.activityId);
     state.currentSession.phase = "selected";
     state.currentSession.activityId = activityId;
     state.currentSession.slideIndex = 0;
@@ -530,6 +636,136 @@ function selectHighlightedActivity() {
     window.setTimeout(() => {
         fadeCurrentScreen(renderWinner);
     }, 300);
+}
+
+function startFinalReveal() {
+    if (finalRevealRunning) {
+        return;
+    }
+
+    const remainingActivity = activities.find(activity => {
+        return !state.completed.includes(activity.id);
+    });
+
+    if (!remainingActivity) {
+        return;
+    }
+
+    finalRevealRunning = true;
+    stopHighlighting();
+    showOverlayControls(false);
+
+    const cards = [...document.querySelectorAll(".activity-card")];
+
+    cards.forEach(card => {
+        card.classList.remove("active", "locked");
+    });
+
+    const cardsToEliminate = shuffle(
+        cards.filter(card => {
+            return Number(card.dataset.activityId) !== remainingActivity.id;
+        })
+    );
+
+    eliminateFinalRevealCards(cardsToEliminate, remainingActivity.id, 0);
+}
+
+function eliminateFinalRevealCards(cards, remainingActivityId, index) {
+    if (index >= cards.length) {
+        const survivor = document.querySelector(
+            `.activity-card[data-activity-id="${remainingActivityId}"]`
+        );
+
+        survivor?.classList.add("final-survivor");
+
+        window.setTimeout(() => {
+            if (!state.currentSession) {
+                finalRevealRunning = false;
+                return;
+            }
+
+            state.currentSession.phase = "selected";
+            state.currentSession.activityId = remainingActivityId;
+            state.currentSession.slideIndex = 0;
+            state.currentSession.finalRound = false;
+
+            saveState();
+
+            finalRevealRunning = false;
+            fadeCurrentScreen(renderWinner);
+        }, 1400);
+
+        return;
+    }
+
+    explodeActivityCard(cards[index]);
+
+    let delay;
+
+    if (index < 12) {
+        delay = 95;
+    } else if (index < 19) {
+        delay = 145;
+    } else if (index < cards.length - 1) {
+        delay = 240;
+    } else {
+        delay = 420;
+    }
+
+    window.setTimeout(() => {
+        eliminateFinalRevealCards(cards, remainingActivityId, index + 1);
+    }, delay);
+}
+
+function explodeActivityCard(card) {
+    if (!card) {
+        return;
+    }
+
+    createConfettiBurst(card);
+    card.classList.add("exploding");
+
+    window.setTimeout(() => {
+        card.classList.remove("exploding");
+        card.classList.add("eliminated");
+    }, 340);
+}
+
+function createConfettiBurst(card) {
+    const rect = card.getBoundingClientRect();
+    const color = card.dataset.color || "#ff5a51";
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const pieceCount = 18;
+
+    for (let index = 0; index < pieceCount; index += 1) {
+        const piece = document.createElement("span");
+        const angle =
+            (Math.PI * 2 * index) / pieceCount +
+            (Math.random() * 0.5 - 0.25);
+
+        const distance = 70 + Math.random() * 150;
+        const x = Math.cos(angle) * distance;
+        const y = Math.sin(angle) * distance;
+        const rotation = Math.round(Math.random() * 720 - 360);
+
+        piece.className = "confetti-piece";
+        piece.style.left = `${centerX}px`;
+        piece.style.top = `${centerY}px`;
+        piece.style.width = `${6 + Math.random() * 9}px`;
+        piece.style.height = `${10 + Math.random() * 13}px`;
+        piece.style.backgroundColor = color;
+        piece.style.setProperty("--confetti-x", `${x}px`);
+        piece.style.setProperty("--confetti-y", `${y}px`);
+        piece.style.setProperty("--confetti-rotation", `${rotation}deg`);
+        piece.style.animationDelay = `${Math.random() * 55}ms`;
+
+        document.body.appendChild(piece);
+
+        window.setTimeout(() => {
+            piece.remove();
+        }, 950);
+    }
 }
 
 function renderWinner() {
@@ -843,12 +1079,8 @@ function completeCurrentActivity() {
 
     const activity = getActivity(session.activityId);
 
-    if (!state.wildCardMode && !state.completed.includes(activity.id)) {
+    if (!state.completed.includes(activity.id)) {
         state.completed.push(activity.id);
-    }
-
-    if (!state.wildCardMode && state.completed.length >= 23) {
-        state.wildCardMode = true;
     }
 
     state.history.push({
@@ -864,7 +1096,15 @@ function completeCurrentActivity() {
 function restartProcess() {
     stopHighlighting();
     slideTransitioning = false;
+    finalRevealRunning = false;
+
     state.currentSession = null;
+
+    if (state.completed.length >= activities.length) {
+        state.completed = [];
+        state.wildCardMode = false;
+    }
+
     saveState();
     renderPrompt();
 }
@@ -905,7 +1145,11 @@ function renderFromState() {
 }
 
 function handleAdvance() {
-    if (adminDialog.open || currentView === "intro") {
+    if (
+        adminDialog.open ||
+        currentView === "intro" ||
+        finalRevealRunning
+    ) {
         return;
     }
 
@@ -916,6 +1160,20 @@ function handleAdvance() {
     lastPressAt = now;
 
     if (!state.currentSession) {
+        if (state.completed.length >= activities.length) {
+            resetFinishedCycleForNewRun();
+        }
+
+        if (currentView === "finalPrompt") {
+            fadeCurrentScreen(startFinalSelectionSession);
+            return;
+        }
+
+        if (state.completed.length === activities.length - 1) {
+            fadeCurrentScreen(renderFinalActivityPrompt);
+            return;
+        }
+
         fadeCurrentScreen(startSelectionSession);
         return;
     }
@@ -961,9 +1219,7 @@ function closeAdmin() {
 }
 
 function populateAdmin() {
-    adminSummary.textContent = state.wildCardMode
-        ? `Wild Card Mode is active. ${state.completed.length} activities were completed before or during setup.`
-        : `${state.completed.length} of 24 activities are completed.`;
+    adminSummary.textContent = `${state.completed.length} of 24 activities are completed.`;
 
     adminActivityList.innerHTML = activities.map(activity => `
         <label class="admin-check">
@@ -987,12 +1243,9 @@ function saveAdminSelections() {
         .filter(isValidActivityId);
 
     state.completed = [...new Set(selectedIds)];
-
-    if (!state.wildCardMode && state.completed.length >= 23) {
-        state.wildCardMode = true;
-    }
-
+    state.wildCardMode = false;
     state.currentSession = null;
+
     saveState();
     populateAdmin();
     closeAdmin();
@@ -1000,23 +1253,37 @@ function saveAdminSelections() {
 }
 
 function undoLastCompletedActivity() {
-    if (!state.history.length) {
+    let historyIndex = -1;
+
+    for (let index = state.history.length - 1; index >= 0; index -= 1) {
+        const activityId = state.history[index].activityId;
+
+        if (state.completed.includes(activityId)) {
+            historyIndex = index;
+            break;
+        }
+    }
+
+    if (historyIndex === -1) {
         return;
     }
 
-    const last = state.history.pop();
-    if (!state.wildCardMode && isValidActivityId(last.activityId)) {
-        state.completed = state.completed.filter(id => id !== last.activityId);
-    }
+    const [last] = state.history.splice(historyIndex, 1);
 
+    state.completed = state.completed.filter(id => id !== last.activityId);
+    state.wildCardMode = false;
     state.currentSession = null;
+
     saveState();
     populateAdmin();
     renderPrompt();
 }
 
 function resetCycle() {
-    const confirmed = window.confirm("Start a brand-new 24-activity cycle? This clears completed activities and turns off Wild Card Mode. Your history will be kept.");
+    const confirmed = window.confirm(
+        "Start a brand-new 24-activity cycle? This clears completed activities. Your history will be kept."
+    );
+
     if (!confirmed) {
         return;
     }
@@ -1024,6 +1291,7 @@ function resetCycle() {
     state.completed = [];
     state.wildCardMode = false;
     state.currentSession = null;
+
     saveState();
     populateAdmin();
     closeAdmin();
