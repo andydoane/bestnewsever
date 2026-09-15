@@ -206,6 +206,8 @@ let slideTransitioning = false;
 let introTimerIds = [];
 let currentView = "boot";
 
+let finalRevealRunning = false;
+
 function getDefaultState() {
     return {
         completed: [],
