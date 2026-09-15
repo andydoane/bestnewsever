@@ -1083,4 +1083,6 @@ adminDialog.addEventListener("click", event => {
     }
 });
 
+window.addEventListener("resize", positionSlideFullscreenButton);
+
 bootApp();
