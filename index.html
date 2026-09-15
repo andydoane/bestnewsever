@@ -3,44 +3,37 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#21b7c8">
+    <meta name="theme-color" content="#333333">
     <title>Best News Ever!</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header class="topbar">
-        <div>
-            <div class="brand">BEST NEWS EVER!</div>
-            <div id="progressText" class="progress-text">0 of 24 activities completed</div>
-        </div>
-        <div class="topbar-actions">
-            <span id="lastInput" class="last-input" aria-live="polite"></span>
-            <button id="fullscreenButton" class="icon-button" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>
-            <button id="adminButton" class="icon-button" type="button" title="Admin" aria-label="Open admin">⚙</button>
-        </div>
-    </header>
-
     <main id="app" class="app" aria-live="polite"></main>
 
-    <button id="advanceButton" class="advance-button" type="button">TEST / ADVANCE</button>
+    <div id="overlayControls" class="overlay-controls is-hidden" aria-label="Page controls">
+        <button id="fullscreenButton" class="overlay-icon-button" type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+        <button id="adminButton" class="overlay-icon-button" type="button" title="Settings" aria-label="Open settings">⚙</button>
+    </div>
+
+    <button id="restartButton" class="restart-button is-hidden" type="button" title="Start again" aria-label="Start again">↻</button>
 
     <dialog id="adminDialog" class="admin-dialog">
-        <form method="dialog" class="admin-panel">
+        <div class="admin-panel">
             <div class="admin-heading-row">
                 <div>
-                    <h2>Activity Admin</h2>
+                    <h2>Activity Settings</h2>
                     <p id="adminSummary" class="admin-summary"></p>
                 </div>
-                <button class="icon-button dark" value="close" aria-label="Close admin">✕</button>
+                <button id="closeAdminButton" class="admin-close-button" type="button" aria-label="Close settings">✕</button>
             </div>
 
-            <p class="admin-help">Check activities that have already been used, then save. Once Wild Card Mode begins, it stays on until you reset the cycle.</p>
+            <p class="admin-help">Check any activities that have already been completed, then save. Once Wild Card Mode begins, it stays on until you start a new cycle.</p>
 
             <div id="adminActivityList" class="admin-activity-list"></div>
 
             <div class="admin-actions">
                 <button id="saveAdminButton" type="button" class="primary-button">Save completed activities</button>
-                <button id="undoLastButton" type="button" class="secondary-button">Undo last selection</button>
+                <button id="undoLastButton" type="button" class="secondary-button">Undo last completed activity</button>
                 <button id="resetCycleButton" type="button" class="warning-button">Start a new 24-activity cycle</button>
                 <button id="clearAllButton" type="button" class="danger-button">Clear all app data</button>
             </div>
@@ -49,7 +42,7 @@
                 <h3>Recent history</h3>
                 <div id="historyList" class="history-list"></div>
             </div>
-        </form>
+        </div>
     </dialog>
 
     <script src="app.js"></script>

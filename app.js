@@ -1,6 +1,11 @@
-const STORAGE_KEY = "bestNewsEverStateV1";
+const STORAGE_KEY = "bestNewsEverStateV2";
 const HIGHLIGHT_SPEED_MS = 145;
-const BUTTON_DEBOUNCE_MS = 320;
+const BUTTON_DEBOUNCE_MS = 300;
+const INTRO_FADE_IN_MS = 900;
+const INTRO_HOLD_MS = 3000;
+const INTRO_FADE_OUT_MS = 900;
+const SCREEN_FADE_MS = 420;
+const SLIDE_TRANSITION_MS = 620;
 
 const activities = [
     {
@@ -125,8 +130,7 @@ const activities = [
     }
 ];
 
-const slideFiles = [
-    "assets/images/title.png",
+const poemSlideFiles = [
     "assets/images/slide_01.png",
     "assets/images/slide_02.png",
     "assets/images/slide_03.png",
@@ -136,6 +140,9 @@ const slideFiles = [
     "assets/images/slide_07.png"
 ];
 
+const titleImage = "assets/images/title.png";
+const smileyImage = "assets/images/smiley.png";
+
 const cueImages = {
     boys: "assets/images/boys.png",
     girls: "assets/images/girls.png",
@@ -143,13 +150,22 @@ const cueImages = {
     sad: "assets/images/sad.png"
 };
 
+const colorClasses = [
+    "color-0",
+    "color-1",
+    "color-2",
+    "color-3",
+    "color-4",
+    "color-5"
+];
+
 const app = document.getElementById("app");
-const progressText = document.getElementById("progressText");
-const lastInput = document.getElementById("lastInput");
-const advanceButton = document.getElementById("advanceButton");
+const overlayControls = document.getElementById("overlayControls");
 const fullscreenButton = document.getElementById("fullscreenButton");
 const adminButton = document.getElementById("adminButton");
+const restartButton = document.getElementById("restartButton");
 const adminDialog = document.getElementById("adminDialog");
+const closeAdminButton = document.getElementById("closeAdminButton");
 const adminActivityList = document.getElementById("adminActivityList");
 const adminSummary = document.getElementById("adminSummary");
 const historyList = document.getElementById("historyList");
@@ -162,6 +178,9 @@ let state = loadState();
 let highlightTimer = null;
 let highlightedIndex = -1;
 let lastPressAt = 0;
+let slideTransitioning = false;
+let introTimerIds = [];
+let currentView = "boot";
 
 function getDefaultState() {
     return {
@@ -193,7 +212,20 @@ function loadState() {
 
 function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    updateProgressText();
+}
+
+function normalizeState() {
+    state.completed = [...new Set(state.completed.filter(isValidActivityId))];
+
+    if (!state.wildCardMode && state.completed.length >= 23) {
+        state.wildCardMode = true;
+    }
+
+    if (state.currentSession && !isValidActivityId(state.currentSession.activityId) && state.currentSession.activityId !== null) {
+        state.currentSession = null;
+    }
+
+    saveState();
 }
 
 function isValidActivityId(id) {
@@ -220,62 +252,128 @@ function shuffle(items) {
     return copy;
 }
 
-function normalizeState() {
-    state.completed = [...new Set(state.completed.filter(isValidActivityId))];
-
-    if (!state.wildCardMode && state.completed.length >= 23) {
-        state.wildCardMode = true;
+function getGridDimensions(count, wildCardMode = false) {
+    if (wildCardMode) {
+        return { cols: 6, rows: 4 };
     }
 
-    if (
-        state.currentSession &&
-        state.currentSession.phase === "finished" &&
-        state.currentSession.sessionDate !== getLocalDateKey()
-    ) {
-        state.currentSession = null;
+    let cols = 3;
+    if (count <= 1) {
+        cols = 1;
+    } else if (count <= 4) {
+        cols = 2;
     }
 
-    saveState();
+    return {
+        cols,
+        rows: Math.ceil(count / cols)
+    };
 }
 
-function updateProgressText() {
-    if (state.wildCardMode) {
-        progressText.textContent = `WILD CARD MODE • ${state.completed.length} of 24 were completed before Wild Card`;
+function buildColorIds(count, cols) {
+    const assignments = [];
+    const usage = [0, 0, 0, 0, 0, 0];
+    let unusedFirstPass = shuffle([0, 1, 2, 3, 4, 5]);
+
+    for (let index = 0; index < count; index += 1) {
+        const leftColor = index % cols === 0 ? null : assignments[index - 1];
+        const upColor = index >= cols ? assignments[index - cols] : null;
+
+        let candidates;
+        if (index < 6) {
+            candidates = unusedFirstPass.filter(color => color !== leftColor && color !== upColor);
+        } else {
+            candidates = [0, 1, 2, 3, 4, 5].filter(color => color !== leftColor && color !== upColor);
+        }
+
+        const lowestUsage = Math.min(...candidates.map(color => usage[color]));
+        const balancedCandidates = candidates.filter(color => usage[color] === lowestUsage);
+        const chosen = balancedCandidates[Math.floor(Math.random() * balancedCandidates.length)];
+
+        assignments.push(chosen);
+        usage[chosen] += 1;
+        unusedFirstPass = unusedFirstPass.filter(color => color !== chosen);
+    }
+
+    return assignments;
+}
+
+function clearIntroTimers() {
+    introTimerIds.forEach(timerId => window.clearTimeout(timerId));
+    introTimerIds = [];
+}
+
+function showOverlayControls(show) {
+    overlayControls.classList.toggle("is-hidden", !show);
+}
+
+function showRestartButton(show) {
+    restartButton.classList.toggle("is-hidden", !show);
+}
+
+function setChromeMode(mode) {
+    showOverlayControls(["prompt", "selection", "winner"].includes(mode));
+    showRestartButton(mode === "final");
+}
+
+function preloadAssets() {
+    [titleImage, smileyImage, ...poemSlideFiles, ...Object.values(cueImages)].forEach(source => {
+        const image = new Image();
+        image.src = source;
+    });
+}
+
+function bootApp() {
+    normalizeState();
+    preloadAssets();
+
+    if (state.currentSession) {
+        renderFromState();
     } else {
-        progressText.textContent = `${state.completed.length} of 24 activities completed`;
+        playIntro();
     }
 }
 
-function renderFromState() {
+function playIntro() {
+    currentView = "intro";
+    clearIntroTimers();
     stopHighlighting();
+    setChromeMode("intro");
 
-    if (!state.currentSession) {
-        renderWelcome();
-        return;
-    }
+    app.innerHTML = `
+        <section class="app-screen intro-screen">
+            <img class="intro-logo" src="${titleImage}" alt="Best News Ever">
+        </section>
+    `;
 
-    switch (state.currentSession.phase) {
-        case "selecting":
-            renderSelection();
-            break;
-        case "selected":
-            renderWinner();
-            break;
-        case "slides":
-            renderSlide();
-            break;
-        case "finished":
-            renderFinished();
-            break;
-        default:
-            state.currentSession = null;
-            saveState();
-            renderWelcome();
-    }
+    const logo = app.querySelector(".intro-logo");
+    window.requestAnimationFrame(() => {
+        logo.classList.add("is-visible");
+    });
+
+    introTimerIds.push(window.setTimeout(() => {
+        logo.classList.remove("is-visible");
+    }, INTRO_FADE_IN_MS + INTRO_HOLD_MS));
+
+    introTimerIds.push(window.setTimeout(() => {
+        renderPrompt();
+    }, INTRO_FADE_IN_MS + INTRO_HOLD_MS + INTRO_FADE_OUT_MS));
 }
 
-function renderWelcome() {
-    startSelectionSession();
+function renderPrompt() {
+    currentView = "prompt";
+    clearIntroTimers();
+    stopHighlighting();
+    setChromeMode("prompt");
+
+    app.innerHTML = `
+        <section class="app-screen prompt-screen fade-in">
+            <h1 class="prompt-title">How will we say it today?</h1>
+            <button id="promptButton" class="prompt-button" type="button">PRESS BUTTON</button>
+        </section>
+    `;
+
+    document.getElementById("promptButton").addEventListener("click", handleAdvance);
 }
 
 function buildBoardIds() {
@@ -294,42 +392,78 @@ function buildBoardIds() {
 
 function startSelectionSession() {
     const boardIds = buildBoardIds();
+    const dimensions = getGridDimensions(boardIds.length, state.wildCardMode);
+    const colorIds = buildColorIds(boardIds.length, dimensions.cols);
+
     state.currentSession = {
         phase: "selecting",
         sessionDate: getLocalDateKey(),
         boardIds,
+        colorIds,
         activityId: null,
         slideIndex: 0
     };
+
     saveState();
     renderSelection();
 }
 
 function renderSelection() {
-    const boardIds = state.currentSession.boardIds || buildBoardIds();
-    state.currentSession.boardIds = boardIds;
-    saveState();
+    currentView = "selection";
+    stopHighlighting();
+    setChromeMode("selection");
 
-    const gridClass = state.wildCardMode ? "wild" : "normal";
+    const boardIds = Array.isArray(state.currentSession.boardIds)
+        ? state.currentSession.boardIds
+        : buildBoardIds();
+
+    const dimensions = getGridDimensions(boardIds.length, state.wildCardMode);
+    let colorIds = Array.isArray(state.currentSession.colorIds)
+        ? state.currentSession.colorIds
+        : [];
+
+    if (colorIds.length !== boardIds.length) {
+        colorIds = buildColorIds(boardIds.length, dimensions.cols);
+        state.currentSession.colorIds = colorIds;
+        saveState();
+    }
+
     const cards = boardIds.map((id, index) => {
         const activity = getActivity(id);
+        const colorClass = colorClasses[colorIds[index]];
         return `
-            <div class="activity-card color-${index % 6}" data-activity-id="${activity.id}">
-                <div class="activity-title">${activity.title}</div>
-            </div>
+            <button class="activity-card ${colorClass}" type="button" data-activity-id="${activity.id}" data-index="${index}">
+                <span class="activity-title">${activity.title}</span>
+            </button>
         `;
     }).join("");
 
+    const gridClass = state.wildCardMode ? "wild" : "normal";
+
     app.innerHTML = `
-        <section class="selection-screen">
-            ${state.wildCardMode ? '<div class="wild-banner">WILD CARD MODE — ALL 24 ARE LIVE!</div>' : ""}
-            <h1 class="selection-heading">PRESS YOUR LUCK!</h1>
-            <p class="selection-subheading">Press the button to lock in the flashing square.</p>
-            <div id="activityGrid" class="activity-grid ${gridClass}">
-                ${cards}
+        <section class="app-screen selection-screen fade-in">
+            <div class="selection-stage">
+                <div class="selection-side">
+                    <img class="smiley-image" src="${smileyImage}" alt="" onerror="this.style.display='none'">
+                </div>
+
+                <div id="activityGrid" class="activity-grid ${gridClass}" style="--cols: ${dimensions.cols}; --rows: ${dimensions.rows};">
+                    ${cards}
+                </div>
+
+                <div class="selection-side">
+                    <img class="smiley-image" src="${smileyImage}" alt="" onerror="this.style.display='none'">
+                </div>
             </div>
         </section>
     `;
+
+    document.querySelectorAll(".activity-card").forEach(card => {
+        card.addEventListener("click", () => {
+            highlightedIndex = Number(card.dataset.index);
+            selectHighlightedActivity();
+        });
+    });
 
     startHighlighting();
 }
@@ -375,82 +509,177 @@ function selectHighlightedActivity() {
 
     stopHighlighting();
 
-    const activityId = Number(cards[highlightedIndex].dataset.activityId);
-    const activity = getActivity(activityId);
+    cards.forEach(card => card.classList.remove("active"));
+    const selectedCard = cards[highlightedIndex];
+    selectedCard.classList.add("locked");
 
+    const activityId = Number(selectedCard.dataset.activityId);
     state.currentSession.phase = "selected";
     state.currentSession.activityId = activityId;
     state.currentSession.slideIndex = 0;
-
-    if (!state.wildCardMode && !state.completed.includes(activityId)) {
-        state.completed.push(activityId);
-    }
-
-    if (!state.wildCardMode && state.completed.length >= 23) {
-        state.wildCardMode = true;
-    }
-
-    state.history.push({
-        activityId,
-        title: activity.title,
-        selectedAt: new Date().toISOString()
-    });
-
     saveState();
-    renderWinner();
+
+    window.setTimeout(() => {
+        fadeCurrentScreen(renderWinner);
+    }, 300);
 }
 
 function renderWinner() {
-    const activity = getActivity(state.currentSession.activityId);
+    currentView = "winner";
+    stopHighlighting();
+    setChromeMode("winner");
+
+    const activity = getActivity(state.currentSession?.activityId);
     if (!activity) {
         state.currentSession = null;
         saveState();
-        renderWelcome();
+        renderPrompt();
         return;
     }
 
     app.innerHTML = `
-        <section class="winner-screen">
-            <div class="winner-card">
-                <p class="winner-kicker">TONIGHT'S VERSION IS...</p>
+        <section class="app-screen winner-screen fade-in">
+            <div class="winner-content">
                 <h1 class="winner-title">${activity.title}</h1>
                 <p class="winner-description">${activity.description}</p>
-                <div class="press-label">PRESS AGAIN FOR THE POEM</div>
+                <button id="letsGoButton" class="lets-go-button" type="button">LET'S GO!</button>
             </div>
         </section>
     `;
+
+    document.getElementById("letsGoButton").addEventListener("click", handleAdvance);
 }
 
 function beginSlides() {
-    state.currentSession.phase = "slides";
-    state.currentSession.slideIndex = 0;
-    saveState();
-    renderSlide();
-}
-
-function renderSlide() {
-    const slideIndex = Number(state.currentSession.slideIndex) || 0;
-    const slideFile = slideFiles[slideIndex];
-
-    if (!slideFile) {
-        finishSession();
+    if (!state.currentSession) {
         return;
     }
 
+    state.currentSession.phase = "slides";
+    state.currentSession.slideIndex = 0;
+    saveState();
+    renderSlideScreen(false);
+}
+
+function getSlideSource(slideIndex) {
+    if (slideIndex >= 0 && slideIndex < poemSlideFiles.length) {
+        return poemSlideFiles[slideIndex];
+    }
+
+    if (slideIndex === poemSlideFiles.length) {
+        return titleImage;
+    }
+
+    return null;
+}
+
+function renderSlideScreen(animateIn = true) {
+    stopHighlighting();
+
+    const slideIndex = Number(state.currentSession?.slideIndex) || 0;
+    const source = getSlideSource(slideIndex);
+
+    if (!source) {
+        return;
+    }
+
+    const isFinalTitle = slideIndex === poemSlideFiles.length;
+    currentView = isFinalTitle ? "final" : "slides";
+    setChromeMode(currentView);
+
     app.innerHTML = `
-        <section class="slide-screen">
-            <img class="slide-image" src="${slideFile}" alt="Best News Ever poem slide ${slideIndex + 1}">
+        <section class="app-screen slide-screen ${animateIn ? "fade-in" : ""}">
+            <div id="slideStage" class="slide-stage">
+                <img class="slide-frame current" src="${source}" alt="${isFinalTitle ? "Best News Ever" : `Best News Ever poem slide ${slideIndex + 1}`}" draggable="false">
+            </div>
             <div id="cueMount"></div>
-            <div class="slide-counter">${slideIndex + 1} / ${slideFiles.length}</div>
         </section>
     `;
 
     renderCueOverlay(state.currentSession.activityId, slideIndex);
+
+    if (isFinalTitle) {
+        completeCurrentActivity();
+    }
+}
+
+function moveSlide(direction) {
+    if (!state.currentSession || state.currentSession.phase !== "slides" || slideTransitioning) {
+        return;
+    }
+
+    const currentIndex = Number(state.currentSession.slideIndex) || 0;
+    const finalIndex = poemSlideFiles.length;
+    const nextIndex = currentIndex + direction;
+
+    if (direction > 0 && currentIndex >= finalIndex) {
+        return;
+    }
+
+    if (nextIndex < 0 || nextIndex > finalIndex) {
+        return;
+    }
+
+    const stage = document.getElementById("slideStage");
+    const currentImage = stage?.querySelector(".slide-frame.current");
+    const nextSource = getSlideSource(nextIndex);
+
+    if (!stage || !currentImage || !nextSource) {
+        state.currentSession.slideIndex = nextIndex;
+        saveState();
+        renderSlideScreen(false);
+        return;
+    }
+
+    slideTransitioning = true;
+    const nextImage = document.createElement("img");
+    nextImage.className = `slide-frame current ${direction > 0 ? "from-right" : "from-left"}`;
+    nextImage.src = nextSource;
+    nextImage.alt = nextIndex === finalIndex
+        ? "Best News Ever"
+        : `Best News Ever poem slide ${nextIndex + 1}`;
+    nextImage.draggable = false;
+    stage.appendChild(nextImage);
+
+    const cueMount = document.getElementById("cueMount");
+    if (cueMount) {
+        cueMount.innerHTML = "";
+    }
+
+    window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+            currentImage.classList.add("is-animating");
+            nextImage.classList.add("is-animating");
+            currentImage.style.transform = direction > 0 ? "translateX(-100%)" : "translateX(100%)";
+            nextImage.style.transform = "translateX(0)";
+        });
+    });
+
+    window.setTimeout(() => {
+        currentImage.remove();
+        nextImage.classList.remove("from-right", "from-left", "is-animating");
+        nextImage.style.transform = "translateX(0)";
+
+        state.currentSession.slideIndex = nextIndex;
+        saveState();
+        renderCueOverlay(state.currentSession.activityId, nextIndex);
+
+        if (nextIndex === finalIndex) {
+            currentView = "final";
+            setChromeMode("final");
+            completeCurrentActivity();
+        } else {
+            currentView = "slides";
+            setChromeMode("slides");
+        }
+
+        slideTransitioning = false;
+    }, SLIDE_TRANSITION_MS + 40);
 }
 
 function renderCueOverlay(activityId, slideIndex) {
     const cueMount = document.getElementById("cueMount");
-    if (!cueMount || slideIndex === 0) {
+    if (!cueMount || slideIndex < 0 || slideIndex >= poemSlideFiles.length) {
         return;
     }
 
@@ -472,13 +701,14 @@ function renderCueOverlay(activityId, slideIndex) {
 }
 
 function getCueForSlide(activityId, slideIndex) {
-    const isFinalPoemSlide = slideIndex === slideFiles.length - 1;
+    const isFinalPoemSlide = slideIndex === poemSlideFiles.length - 1;
 
     if (activityId === 6) {
         if (isFinalPoemSlide) {
             return { label: "EVERYBODY!", image: null };
         }
-        return slideIndex % 2 === 1
+
+        return slideIndex % 2 === 0
             ? { label: "BOYS!", image: cueImages.boys }
             : { label: "GIRLS!", image: cueImages.girls };
     }
@@ -487,13 +717,14 @@ function getCueForSlide(activityId, slideIndex) {
         if (isFinalPoemSlide) {
             return { label: "EVERYBODY!", image: null };
         }
-        return slideIndex % 2 === 1
+
+        return slideIndex % 2 === 0
             ? { label: "LEADERS!", image: null }
             : { label: "KIDS!", image: null };
     }
 
     if (activityId === 24) {
-        return slideIndex % 2 === 1
+        return slideIndex % 2 === 0
             ? { label: "HAPPY!", image: cueImages.happy }
             : { label: "SAD!", image: cueImages.sad };
     }
@@ -501,46 +732,77 @@ function getCueForSlide(activityId, slideIndex) {
     return null;
 }
 
-function advanceSlide() {
-    const nextIndex = state.currentSession.slideIndex + 1;
-    if (nextIndex >= slideFiles.length) {
-        finishSession();
+function completeCurrentActivity() {
+    const session = state.currentSession;
+    if (!session || !isValidActivityId(session.activityId) || session.completedRecorded) {
         return;
     }
 
-    state.currentSession.slideIndex = nextIndex;
-    saveState();
-    renderSlide();
-}
+    const activity = getActivity(session.activityId);
 
-function finishSession() {
-    state.currentSession.phase = "finished";
-    saveState();
-    renderFinished();
-}
+    if (!state.wildCardMode && !state.completed.includes(activity.id)) {
+        state.completed.push(activity.id);
+    }
 
-function renderFinished() {
-    const activity = getActivity(state.currentSession.activityId);
-    const activityName = activity ? activity.title : "tonight's activity";
+    if (!state.wildCardMode && state.completed.length >= 23) {
+        state.wildCardMode = true;
+    }
 
-    app.innerHTML = `
-        <section class="finished-screen">
-            <h1>BEST NEWS EVER!</h1>
-            <p>${activityName} is complete for tonight.</p>
-            <div class="press-label">DONE FOR TONIGHT</div>
-            <button id="startAnotherButton" class="secondary-button" type="button" style="margin-top: 28px;">Start another round</button>
-        </section>
-    `;
-
-    document.getElementById("startAnotherButton").addEventListener("click", () => {
-        state.currentSession = null;
-        saveState();
-        renderWelcome();
+    state.history.push({
+        activityId: activity.id,
+        title: activity.title,
+        completedAt: new Date().toISOString()
     });
+
+    session.completedRecorded = true;
+    saveState();
 }
 
-function handlePress(sourceLabel = "Button") {
-    if (adminDialog.open) {
+function restartProcess() {
+    stopHighlighting();
+    slideTransitioning = false;
+    state.currentSession = null;
+    saveState();
+    renderPrompt();
+}
+
+function fadeCurrentScreen(callback) {
+    const screen = app.querySelector(".app-screen");
+    if (!screen) {
+        callback();
+        return;
+    }
+
+    screen.classList.remove("fade-in");
+    screen.classList.add("fade-out");
+    window.setTimeout(callback, SCREEN_FADE_MS);
+}
+
+function renderFromState() {
+    if (!state.currentSession) {
+        renderPrompt();
+        return;
+    }
+
+    switch (state.currentSession.phase) {
+        case "selecting":
+            renderSelection();
+            break;
+        case "selected":
+            renderWinner();
+            break;
+        case "slides":
+            renderSlideScreen(false);
+            break;
+        default:
+            state.currentSession = null;
+            saveState();
+            renderPrompt();
+    }
+}
+
+function handleAdvance() {
+    if (adminDialog.open || currentView === "intro") {
         return;
     }
 
@@ -550,10 +812,8 @@ function handlePress(sourceLabel = "Button") {
     }
     lastPressAt = now;
 
-    lastInput.textContent = `Last input: ${sourceLabel}`;
-
     if (!state.currentSession) {
-        startSelectionSession();
+        fadeCurrentScreen(startSelectionSession);
         return;
     }
 
@@ -565,57 +825,42 @@ function handlePress(sourceLabel = "Button") {
             beginSlides();
             break;
         case "slides":
-            advanceSlide();
-            break;
-        case "finished":
+            moveSlide(1);
             break;
         default:
-            state.currentSession = null;
-            saveState();
-            renderWelcome();
+            break;
     }
 }
 
-function shouldTreatAsButtonPress(event) {
-    if (event.ctrlKey || event.metaKey || event.altKey) {
-        return false;
+function handleBack() {
+    if (adminDialog.open || !state.currentSession || state.currentSession.phase !== "slides") {
+        return;
     }
 
-    const ignoredKeys = new Set([
-        "Shift",
-        "Control",
-        "Alt",
-        "Meta",
-        "CapsLock",
-        "Tab",
-        "Escape",
-        "F1",
-        "F2",
-        "F3",
-        "F4",
-        "F5",
-        "F6",
-        "F7",
-        "F8",
-        "F9",
-        "F10",
-        "F11",
-        "F12"
-    ]);
+    moveSlide(-1);
+}
 
-    return !ignoredKeys.has(event.key);
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+        document.exitFullscreen?.().catch(() => {});
+    }
 }
 
 function openAdmin() {
-    stopHighlighting();
-    renderAdmin();
+    populateAdmin();
     adminDialog.showModal();
 }
 
-function renderAdmin() {
+function closeAdmin() {
+    adminDialog.close();
+}
+
+function populateAdmin() {
     adminSummary.textContent = state.wildCardMode
-        ? `Wild Card Mode is ON. ${state.completed.length} activities are marked completed.`
-        : `${state.completed.length} of 24 activities are marked completed.`;
+        ? `Wild Card Mode is active. ${state.completed.length} activities were completed before or during setup.`
+        : `${state.completed.length} of 24 activities are completed.`;
 
     adminActivityList.innerHTML = activities.map(activity => `
         <label class="admin-check">
@@ -624,21 +869,21 @@ function renderAdmin() {
         </label>
     `).join("");
 
-    const recent = [...state.history].reverse().slice(0, 10);
-    historyList.innerHTML = recent.length
-        ? recent.map(item => {
-            const date = item.selectedAt ? new Date(item.selectedAt).toLocaleString() : "Unknown date";
-            return `<div>${date} — ${item.title || `Activity ${item.activityId}`}</div>`;
+    const recentHistory = [...state.history].reverse().slice(0, 12);
+    historyList.innerHTML = recentHistory.length
+        ? recentHistory.map(item => {
+            const when = item.completedAt ? new Date(item.completedAt).toLocaleString() : "Unknown time";
+            return `<div>${item.title || `Activity ${item.activityId}`} — ${when}</div>`;
         }).join("")
-        : '<div class="history-empty">No selections recorded yet.</div>';
+        : '<div class="history-empty">No completed activities recorded yet.</div>';
 }
 
 function saveAdminSelections() {
-    const checkedIds = [...adminActivityList.querySelectorAll('input[type="checkbox"]:checked')]
+    const selectedIds = [...adminActivityList.querySelectorAll('input[type="checkbox"]:checked')]
         .map(input => Number(input.value))
         .filter(isValidActivityId);
 
-    state.completed = [...new Set(checkedIds)];
+    state.completed = [...new Set(selectedIds)];
 
     if (!state.wildCardMode && state.completed.length >= 23) {
         state.wildCardMode = true;
@@ -646,28 +891,29 @@ function saveAdminSelections() {
 
     state.currentSession = null;
     saveState();
-    renderAdmin();
-    renderWelcome();
+    populateAdmin();
+    closeAdmin();
+    renderPrompt();
 }
 
-function undoLastSelection() {
-    const last = state.history.pop();
-    if (!last) {
+function undoLastCompletedActivity() {
+    if (!state.history.length) {
         return;
     }
 
-    if (!state.wildCardMode) {
+    const last = state.history.pop();
+    if (!state.wildCardMode && isValidActivityId(last.activityId)) {
         state.completed = state.completed.filter(id => id !== last.activityId);
     }
 
     state.currentSession = null;
     saveState();
-    renderAdmin();
-    renderWelcome();
+    populateAdmin();
+    renderPrompt();
 }
 
 function resetCycle() {
-    const confirmed = window.confirm("Start a brand-new 24-activity cycle? This turns off Wild Card Mode and marks every activity unused.");
+    const confirmed = window.confirm("Start a brand-new 24-activity cycle? This clears completed activities and turns off Wild Card Mode. Your history will be kept.");
     if (!confirmed) {
         return;
     }
@@ -676,12 +922,13 @@ function resetCycle() {
     state.wildCardMode = false;
     state.currentSession = null;
     saveState();
-    renderAdmin();
-    renderWelcome();
+    populateAdmin();
+    closeAdmin();
+    renderPrompt();
 }
 
 function clearAllData() {
-    const confirmed = window.confirm("Clear ALL Best News Ever app data, including completion progress and history?");
+    const confirmed = window.confirm("Clear ALL Best News Ever app data, including history? This cannot be undone.");
     if (!confirmed) {
         return;
     }
@@ -689,42 +936,47 @@ function clearAllData() {
     localStorage.removeItem(STORAGE_KEY);
     state = getDefaultState();
     saveState();
-    renderAdmin();
-    renderWelcome();
+    populateAdmin();
+    closeAdmin();
+    renderPrompt();
 }
 
-async function toggleFullscreen() {
-    try {
-        if (!document.fullscreenElement) {
-            await document.documentElement.requestFullscreen();
-        } else {
-            await document.exitFullscreen();
-        }
-    } catch (error) {
-        console.warn("Fullscreen was not available.", error);
+document.addEventListener("keydown", event => {
+    if (event.repeat) {
+        return;
     }
-}
 
-window.addEventListener("keydown", event => {
-    if (!shouldTreatAsButtonPress(event) || adminDialog.open) {
+    if (adminDialog.open) {
+        return;
+    }
+
+    if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        handleBack();
+        return;
+    }
+
+    if (["Escape", "Shift", "Control", "Alt", "Meta", "CapsLock", "Tab", "F11"].includes(event.key)) {
         return;
     }
 
     event.preventDefault();
-    handlePress(event.code || event.key || "Keyboard");
+    handleAdvance();
 });
 
-advanceButton.addEventListener("click", () => handlePress("On-screen test"));
 fullscreenButton.addEventListener("click", toggleFullscreen);
 adminButton.addEventListener("click", openAdmin);
+restartButton.addEventListener("click", restartProcess);
+closeAdminButton.addEventListener("click", closeAdmin);
 saveAdminButton.addEventListener("click", saveAdminSelections);
-undoLastButton.addEventListener("click", undoLastSelection);
+undoLastButton.addEventListener("click", undoLastCompletedActivity);
 resetCycleButton.addEventListener("click", resetCycle);
 clearAllButton.addEventListener("click", clearAllData);
 
-adminDialog.addEventListener("close", () => {
-    renderFromState();
+adminDialog.addEventListener("click", event => {
+    if (event.target === adminDialog) {
+        closeAdmin();
+    }
 });
 
-normalizeState();
-renderFromState();
+bootApp();
