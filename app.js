@@ -260,7 +260,10 @@ function loadState() {
             completed: Array.isArray(saved.completed) ? saved.completed.filter(isValidActivityId) : [],
             wildCardMode: Boolean(saved.wildCardMode),
             history: Array.isArray(saved.history) ? saved.history : [],
-            currentSession: saved.currentSession || null
+            currentSession:
+                saved.currentSession?.phase === "slides"
+                    ? null
+                    : saved.currentSession || null
         };
     } catch (error) {
         console.warn("Could not read saved Best News Ever data.", error);
@@ -269,7 +272,15 @@ function loadState() {
 }
 
 function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const stateToSave = {
+        ...state,
+        currentSession:
+            state.currentSession?.phase === "slides"
+                ? null
+                : state.currentSession
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
 }
 
 function normalizeState() {
@@ -379,6 +390,10 @@ function showOverlayControls(show) {
 
 function showRestartButton(show) {
     restartButton.classList.toggle("is-hidden", !show);
+
+    if (show) {
+        window.requestAnimationFrame(positionSlideFullscreenButton);
+    }
 }
 
 function setChromeMode(mode) {
@@ -1092,10 +1107,13 @@ function syncSlideFullscreenButton(show) {
 }
 
 function positionSlideFullscreenButton() {
-    const button = document.getElementById("slideFullscreenButton");
+    const fullscreenControl = document.getElementById("slideFullscreenButton");
+    const restartControl = restartButton.classList.contains("is-hidden")
+        ? null
+        : restartButton;
     const stage = document.getElementById("slideStage");
 
-    if (!button || !stage) {
+    if (!stage || (!fullscreenControl && !restartControl)) {
         return;
     }
 
@@ -1105,8 +1123,8 @@ function positionSlideFullscreenButton() {
 
     const imageRatio =
         slideReferenceImage.complete &&
-        slideReferenceImage.naturalWidth > 0 &&
-        slideReferenceImage.naturalHeight > 0
+            slideReferenceImage.naturalWidth > 0 &&
+            slideReferenceImage.naturalHeight > 0
             ? slideReferenceImage.naturalWidth / slideReferenceImage.naturalHeight
             : 16 / 9;
 
@@ -1129,8 +1147,18 @@ function positionSlideFullscreenButton() {
         rightOffset = (stageWidth - displayedWidth) / 2;
     }
 
-    button.style.top = `${topOffset + margin}px`;
-    button.style.right = `${rightOffset + margin}px`;
+    const top = `${topOffset + margin}px`;
+    const right = `${rightOffset + margin}px`;
+
+    if (fullscreenControl) {
+        fullscreenControl.style.top = top;
+        fullscreenControl.style.right = right;
+    }
+
+    if (restartControl) {
+        restartControl.style.top = top;
+        restartControl.style.right = right;
+    }
 }
 
 function renderSlideScreen(animateIn = true) {
