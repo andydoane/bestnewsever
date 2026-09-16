@@ -449,13 +449,14 @@ button {
 }
 
 .slide-screen {
-    background: var(--background);
+    background: #000000;
 }
 
 .slide-stage {
     position: absolute;
     inset: 0;
     overflow: hidden;
+    background: #000000;
 }
 
 .slide-frame {
@@ -464,7 +465,7 @@ button {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    background: var(--background);
+    background: #000000;
     transform: translateX(0);
     will-change: transform;
 }
