@@ -59,6 +59,15 @@ button {
     cursor: pointer;
 }
 
+.prompt-title,
+.board-title,
+.activity-title,
+.winner-title,
+.winner-description,
+.cue-slide-text {
+    text-wrap: balance;
+}
+
 .app {
     position: fixed;
     inset: 0;
@@ -193,57 +202,46 @@ button {
 }
 
 .selection-screen {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: clamp(28px, 4vh, 54px) clamp(38px, 4vw, 80px);
+    padding: clamp(14px, 1.8vh, 24px) clamp(16px, 1.5vw, 30px) clamp(18px, 2.2vh, 30px);
 }
 
 .selection-stage {
     width: 100%;
     height: 100%;
-    display: grid;
-    grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
-    align-items: center;
-    justify-items: center;
-    gap: clamp(24px, 3.5vw, 72px);
-}
-
-.selection-side {
-    width: 100%;
+    min-height: 0;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    gap: clamp(10px, 1.4vh, 18px);
 }
 
-.smiley-image {
-    width: min(15vw, 270px);
-    max-height: 40vh;
-    object-fit: contain;
+.board-title {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0 140px;
+    font-family: "Titan One", Arial, Helvetica, sans-serif;
+    font-size: clamp(2.2rem, 4.8vh, 4.8rem);
+    font-weight: 400;
+    line-height: 1;
+    color: var(--white);
+    text-align: center;
 }
 
 .activity-grid {
-    --cols: 3;
-    --rows: 3;
     display: grid;
-    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-    gap: clamp(13px, 1.35vw, 25px);
-    align-items: center;
-    justify-items: center;
-}
-
-.activity-grid.normal {
-    width: min(
-        48vw,
-        calc((76vh - (var(--rows) - 1) * 25px) / var(--rows) * var(--cols) + (var(--cols) - 1) * 25px)
-    );
 }
 
 .activity-grid.full {
     --cols: 6;
     --rows: 4;
-    width: min(76vw, 1280px);
-    gap: clamp(9px, 0.8vw, 16px);
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    gap: clamp(8px, 1vw, 18px);
+    align-items: stretch;
+    justify-items: stretch;
 }
 
 .activity-card {
@@ -385,12 +383,17 @@ button {
 }
 
 .activity-grid.full .activity-card {
-    border-radius: clamp(12px, 1.2vw, 22px);
-    padding: clamp(6px, 0.65vw, 11px);
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    aspect-ratio: auto;
+    border-radius: clamp(12px, 1.35vw, 26px);
+    padding: clamp(8px, 1vw, 18px);
 }
 
 .activity-grid.full .activity-title {
-    font-size: clamp(0.76rem, 1.15vw, 1.38rem);
+    font-size: clamp(1rem, 1.65vw, 2rem);
 }
 
 .color-0 { background: var(--coral); }
@@ -714,43 +717,12 @@ button {
 }
 
 @media (max-width: 900px) {
-    .selection-stage {
-        grid-template-columns: 1fr;
-    }
-
-    .selection-side {
-        display: none;
-    }
-
-    .activity-grid.normal,
-    .activity-grid.full {
-        width: min(86vw, 82vh);
-    }
-
-    .activity-grid.full {
-        --cols: 4;
-        --rows: 6;
-    }
-
     .admin-activity-list {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
 @media (max-width: 620px) {
-    .activity-grid.normal,
-    .activity-grid.full {
-        --cols: 2;
-        width: min(88vw, 78vh);
-        max-height: 82vh;
-        overflow-y: auto;
-        padding-right: 4px;
-    }
-
-    .activity-grid.full {
-        --rows: 12;
-    }
-
     .admin-activity-list {
         grid-template-columns: 1fr;
     }
