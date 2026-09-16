@@ -30,8 +30,8 @@ const activities = [
     },
     {
         id: 5,
-        title: "Old-Fashioned Preacher",
-        description: "Give it the full revival-preacher treatment: pacing, raised voice, hand gestures, and a few big 'Amen!' moments."
+        title: "Body Builder",
+        description: "Say the verse and do the motions like a buff body builder."
     },
     {
         id: 6,
@@ -50,8 +50,8 @@ const activities = [
     },
     {
         id: 9,
-        title: "Question-and-Answer",
-        description: "Have different people deliver the lines as though they're having a conversation."
+        title: "Night Time",
+        description: "Turn off the lights and say the verse in the dark."
     },
     {
         id: 10,
@@ -149,6 +149,18 @@ const highlightedPoemSlideFiles = [
     "assets/images/slide_06_alt.png",
     "assets/images/slide_07_alt.png"
 ];
+
+const neonPoemSlideFiles = [
+    "assets/images/slide_01_neon.png",
+    "assets/images/slide_02_neon.png",
+    "assets/images/slide_03_neon.png",
+    "assets/images/slide_04_neon.png",
+    "assets/images/slide_05_neon.png",
+    "assets/images/slide_06_neon.png",
+    "assets/images/slide_07_neon.png"
+];
+
+const neonTitleImage = "assets/images/title_neon.png";
 
 const activityAudioFiles = {
     17: "assets/audio/beat_loop.mp3",
@@ -377,9 +389,11 @@ function setChromeMode(mode) {
 function preloadAssets() {
     [
         titleImage,
+        neonTitleImage,
         smileyImage,
         ...poemSlideFiles,
         ...highlightedPoemSlideFiles,
+        ...neonPoemSlideFiles,
         ...Object.values(cueImages)
     ].forEach(source => {
         const image = new Image();
@@ -388,11 +402,19 @@ function preloadAssets() {
 }
 
 function getPoemSlideFilesForActivity(activityId) {
+    if (activityId === 9) {
+        return neonPoemSlideFiles;
+    }
+
     if (activityId === 19 || activityId === 20) {
         return highlightedPoemSlideFiles;
     }
 
     return poemSlideFiles;
+}
+
+function getTitleImageForActivity(activityId) {
+    return activityId === 9 ? neonTitleImage : titleImage;
 }
 
 function clearAudioFade() {
@@ -661,16 +683,10 @@ function renderSelection() {
     app.innerHTML = `
         <section class="app-screen selection-screen fade-in">
             <div class="selection-stage">
-                <div class="selection-side">
-                    <img class="smiley-image" src="${smileyImage}" alt="" onerror="this.style.display='none'">
-                </div>
+                <h1 class="board-title">Press the Button!</h1>
 
                 <div id="activityGrid" class="activity-grid full">
                     ${cards}
-                </div>
-
-                <div class="selection-side">
-                    <img class="smiley-image" src="${smileyImage}" alt="" onerror="this.style.display='none'">
                 </div>
             </div>
         </section>
@@ -1009,7 +1025,7 @@ function buildSlideSequence(activityId) {
 
     sequence.push({
         type: "image",
-        source: titleImage,
+        source: getTitleImageForActivity(activityId),
         alt: "Best News Ever",
         isFinalTitle: true
     });
@@ -1316,6 +1332,10 @@ function handleAdvance() {
     }
     lastPressAt = now;
 
+    if (!state.currentSession && currentView === "prompt") {
+        enterFullscreen();
+    }
+
     if (!state.currentSession) {
         if (state.completed.length >= activities.length) {
             resetFinishedCycleForNewRun();
@@ -1356,6 +1376,12 @@ function handleBack() {
     }
 
     moveSlide(-1);
+}
+
+function enterFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => { });
+    }
 }
 
 function toggleFullscreen() {
