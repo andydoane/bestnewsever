@@ -267,6 +267,8 @@ let finalRevealRunning = false;
 let activityAudio = null;
 let audioFadeFrame = null;
 
+const preloadedAudio = new Map();
+
 let announcementAudio = null;
 let announcementLocked = false;
 
@@ -522,6 +524,26 @@ function preloadAssets() {
     });
 }
 
+function preloadAudioAssets() {
+    const audioFiles = [
+        ...Object.values(announcementAudioFiles),
+        ...Object.values(activityAudioFiles)
+    ];
+
+    audioFiles.forEach(source => {
+        if (preloadedAudio.has(source)) {
+            return;
+        }
+
+        const audio = new Audio();
+        audio.preload = "auto";
+        audio.src = source;
+
+        preloadedAudio.set(source, audio);
+        audio.load();
+    });
+}
+
 function getPoemSlideFilesForActivity(activityId) {
     if (activityId === 9) {
         return neonPoemSlideFiles;
@@ -573,7 +595,14 @@ function startActivityAudio(activityId) {
         return;
     }
 
-    activityAudio = new Audio(source);
+    activityAudio = preloadedAudio.get(source) || new Audio(source);
+
+    try {
+        activityAudio.currentTime = 0;
+    } catch (error) {
+        // Audio may still be loading.
+    }
+
     activityAudio.preload = "auto";
     activityAudio.loop = false;
     activityAudio.volume = 1;
@@ -659,6 +688,7 @@ function bootApp() {
     const startedNewCycle = resetFinishedCycleForNewRun();
 
     preloadAssets();
+    preloadAudioAssets();
 
     if (!startedNewCycle && state.currentSession) {
         renderFromState();
@@ -1069,18 +1099,30 @@ function playAnnouncementAudio(activityId) {
 
     if (!source || !letsGoButton) {
         console.warn("Announcement audio or LET'S GO! button not found.");
+
+        if (letsGoButton) {
+            letsGoButton.disabled = false;
+        }
+
         return;
     }
 
     announcementLocked = true;
     letsGoButton.disabled = true;
-    letsGoButton.textContent = "PLEASE WAIT...";
     showOverlayControls(false);
 
-    const audio = new Audio(source);
+    const audio = preloadedAudio.get(source) || new Audio(source);
+
     announcementAudio = audio;
     audio.preload = "auto";
     audio.loop = false;
+    audio.volume = 1;
+
+    try {
+        audio.currentTime = 0;
+    } catch (error) {
+        // Audio may still be loading.
+    }
 
     function finishAnnouncement() {
         if (announcementAudio !== audio) {
@@ -1095,7 +1137,6 @@ function playAnnouncementAudio(activityId) {
 
             if (button) {
                 button.disabled = false;
-                button.textContent = "LET'S GO!";
             }
 
             setChromeMode("winner");
@@ -1140,7 +1181,7 @@ function renderWinner() {
                     class="lets-go-button"
                     type="button"
                     disabled
-                >PLEASE WAIT...</button>
+                >LET'S GO!</button>
             </div>
         </section>
     `;
