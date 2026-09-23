@@ -10,12 +10,12 @@ const SLIDE_TRANSITION_MS = 620;
 const activities = [
     {
         id: 1,
-        title: "Quiet to Loud",
+        title: "Turn Up the Volume",
         description: "Start in a whisper with tiny motions, then slowly build to loud voices and big motions."
     },
     {
         id: 2,
-        title: "Opera Version",
+        title: "Opera Style",
         description: "Sing the poem dramatically as though you're performing at an opera."
     },
     {
@@ -25,7 +25,7 @@ const activities = [
     },
     {
         id: 4,
-        title: "Dramatic",
+        title: "Over-Dramatic",
         description: "Use over-the-top acting with huge, dramatic gestures."
     },
     {
@@ -45,7 +45,7 @@ const activities = [
     },
     {
         id: 8,
-        title: "Echo Version",
+        title: "Echo Time",
         description: "One person says each line, and the audience repeats it back."
     },
     {
@@ -55,7 +55,7 @@ const activities = [
     },
     {
         id: 10,
-        title: "Whisper",
+        title: "Whisper Mode",
         description: "Say the poem while whispering and doing tiny motions."
     },
     {
@@ -75,7 +75,7 @@ const activities = [
     },
     {
         id: 14,
-        title: "Ninja",
+        title: "Ninja Style",
         description: "Do all the motions like a ninja."
     },
     {
@@ -85,7 +85,7 @@ const activities = [
     },
     {
         id: 16,
-        title: "Spin",
+        title: "Spin Around",
         description: "Say the words and do the motions while slowly spinning in a circle."
     },
     {
@@ -95,27 +95,27 @@ const activities = [
     },
     {
         id: 18,
-        title: "Spooky",
+        title: "Spooky Time",
         description: "Say the words and do the motions like a spooky ghost."
     },
     {
         id: 19,
-        title: "Shout the Key Words",
+        title: "Shout It Out!",
         description: "Say the words and do the motions normally, shouting the words that are shown in a different color."
     },
     {
         id: 20,
-        title: "Jump",
+        title: "Jump Around",
         description: "Say the words and do the motions normally, jumping when you say words that are shown in a different color."
     },
     {
         id: 21,
-        title: "Pirates",
+        title: "Pirate Style",
         description: "Say the words and do the motions like a pirate."
     },
     {
         id: 22,
-        title: "Statue",
+        title: "Statue Mode",
         description: "Freeze in a statue pose. Say the words normally, moving your lips as little as possible while maintaining the pose."
     },
     {
