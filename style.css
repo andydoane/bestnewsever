@@ -449,8 +449,8 @@ button {
 }
 
 .lets-go-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .slide-screen {
