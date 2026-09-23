@@ -70,7 +70,7 @@ const activities = [
     },
     {
         id: 13,
-        title: "Sleepy",
+        title: "Sleepy Style",
         description: "Lay on your back and say the poem, doing the motions while you stay lying down."
     },
     {
