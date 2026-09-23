@@ -90,7 +90,7 @@ const activities = [
     },
     {
         id: 17,
-        title: "Say It to the Beat",
+        title: "Groove Mode",
         description: "Say the words and do the motions to a drum loop."
     },
     {
