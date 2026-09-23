@@ -21,12 +21,12 @@ const activities = [
     {
         id: 3,
         title: "Robot Mode",
-        description: "Deliver it completely monotone and robotic, including stiff robot movements."
+        description: "Say the words and do the motions like a robot."
     },
     {
         id: 4,
         title: "Over-Dramatic",
-        description: "Use over-the-top acting with huge, dramatic gestures."
+        description: "Say the words and do the motions in an over-the-top dramatic fashion."
     },
     {
         id: 5,
@@ -46,7 +46,7 @@ const activities = [
     {
         id: 8,
         title: "Echo Time",
-        description: "One person says each line, and the audience repeats it back."
+        description: "One person says each line, and the others echo them."
     },
     {
         id: 9,
@@ -61,22 +61,22 @@ const activities = [
     {
         id: 11,
         title: "Slow Motion",
-        description: "Perform every motion in exaggerated slow motion."
+        description: "Say the words and do the motions in slow motion."
     },
     {
         id: 12,
         title: "Speed Round",
-        description: "Do the entire poem and its motions as quickly as humanly possible."
+        description: "Say the words and do the motions as fast as possible."
     },
     {
         id: 13,
         title: "Sleepy Style",
-        description: "Lay on your back and say the poem, doing the motions while you stay lying down."
+        description: "Lay on your back and say the words, doing the motions while you stay lying down."
     },
     {
         id: 14,
         title: "Ninja Style",
-        description: "Do all the motions like a ninja."
+        description: "Say the words and do the motions like a ninja."
     },
     {
         id: 15,
@@ -116,17 +116,17 @@ const activities = [
     {
         id: 22,
         title: "Statue Mode",
-        description: "Freeze in a statue pose. Say the words normally, moving your lips as little as possible while maintaining the pose."
+        description: "Freeze in a statue pose. Say the words normally, but don't do any motions."
     },
     {
         id: 23,
         title: "Soldier March",
-        description: "March to the beat while you say the poem like a soldier."
+        description: "March to the beat while you say the words and do the motions."
     },
     {
         id: 24,
         title: "Happy & Sad",
-        description: "Say one slide in a happy way and the next in a sad way, alternating as you go."
+        description: "Say one slide in a happy way and the next in a sad way."
     }
 ];
 
