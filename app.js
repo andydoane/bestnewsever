@@ -267,13 +267,16 @@ let finalRevealRunning = false;
 let activityAudio = null;
 let audioFadeFrame = null;
 
-const preloadedAudio = new Map();
+let queuedAnnouncementAudio = null;
 
 let announcementAudio = null;
 let announcementLocked = false;
 
 let gameShowAudioContext = null;
 let boardTickCount = 0;
+
+let selectionCountdownTimer = null;
+let selectionCountdownOverlay = null;
 
 function ensureGameShowAudio() {
     try {
@@ -346,6 +349,79 @@ function playBoardSelectionSound() {
 
     playGameShowTone(660, 0.12, 0.11);
     playGameShowTone(1046, 0.24, 0.13, 0.105);
+}
+
+function endSelectionCountdown() {
+    if (selectionCountdownTimer !== null) {
+        window.clearInterval(selectionCountdownTimer);
+        selectionCountdownTimer = null;
+    }
+
+    if (selectionCountdownOverlay) {
+        selectionCountdownOverlay.remove();
+        selectionCountdownOverlay = null;
+    }
+}
+
+function startSelectionCountdown(activityId, onFinished) {
+    endSelectionCountdown();
+
+    announcementLocked = true;
+    showOverlayControls(false);
+    stopHighlighting();
+
+    // Start loading the selected MP3 immediately.
+    prepareAnnouncementAudio(activityId);
+
+    // Make sure our game-show beeps are available.
+    ensureGameShowAudio();
+
+    const overlay = document.createElement("div");
+    overlay.className = "selection-countdown-overlay";
+
+    overlay.innerHTML = `
+        <div class="selection-countdown-number"
+             aria-live="off">5</div>
+    `;
+
+    document.body.appendChild(overlay);
+    selectionCountdownOverlay = overlay;
+
+    const number = overlay.querySelector(
+        ".selection-countdown-number"
+    );
+
+    const pitches = [520, 620, 740, 880, 1046];
+
+    let remaining = 5;
+
+    // The first beep follows the selection sound.
+    window.setTimeout(() => {
+        if (selectionCountdownOverlay === overlay) {
+            playGameShowTone(pitches[0], 0.14, 0.10);
+        }
+    }, 180);
+
+    selectionCountdownTimer = window.setInterval(() => {
+        remaining -= 1;
+
+        if (remaining === 0) {
+            window.clearInterval(selectionCountdownTimer);
+            selectionCountdownTimer = null;
+            onFinished();
+            return;
+        }
+
+        number.textContent = remaining;
+
+        const pitchIndex = 5 - remaining;
+
+        playGameShowTone(
+            pitches[pitchIndex],
+            0.14,
+            0.10
+        );
+    }, 1000);
 }
 
 function getDefaultState() {
@@ -524,25 +600,26 @@ function preloadAssets() {
     });
 }
 
-function preloadAudioAssets() {
-    const audioFiles = [
-        ...Object.values(announcementAudioFiles),
-        ...Object.values(activityAudioFiles)
-    ];
+function prepareAnnouncementAudio(activityId) {
+    if (queuedAnnouncementAudio) {
+        queuedAnnouncementAudio.pause();
+        queuedAnnouncementAudio = null;
+    }
 
-    audioFiles.forEach(source => {
-        if (preloadedAudio.has(source)) {
-            return;
-        }
+    const source = announcementAudioFiles[activityId];
 
-        const audio = new Audio();
-        audio.preload = "auto";
-        audio.src = source;
+    if (!source) {
+        return;
+    }
 
-        preloadedAudio.set(source, audio);
-        audio.load();
-    });
+    const audio = new Audio();
+    audio.preload = "auto";
+    audio.src = source;
+
+    queuedAnnouncementAudio = audio;
+    audio.load();
 }
+
 
 function getPoemSlideFilesForActivity(activityId) {
     if (activityId === 9) {
@@ -595,14 +672,7 @@ function startActivityAudio(activityId) {
         return;
     }
 
-    activityAudio = preloadedAudio.get(source) || new Audio(source);
-
-    try {
-        activityAudio.currentTime = 0;
-    } catch (error) {
-        // Audio may still be loading.
-    }
-
+    activityAudio = new Audio(source);
     activityAudio.preload = "auto";
     activityAudio.loop = false;
     activityAudio.volume = 1;
@@ -688,7 +758,6 @@ function bootApp() {
     const startedNewCycle = resetFinishedCycleForNewRun();
 
     preloadAssets();
-    preloadAudioAssets();
 
     if (!startedNewCycle && state.currentSession) {
         renderFromState();
@@ -1104,6 +1173,7 @@ function playAnnouncementAudio(activityId) {
             letsGoButton.disabled = false;
         }
 
+        announcementLocked = false;
         return;
     }
 
@@ -1111,7 +1181,8 @@ function playAnnouncementAudio(activityId) {
     letsGoButton.disabled = true;
     showOverlayControls(false);
 
-    const audio = preloadedAudio.get(source) || new Audio(source);
+    const audio = queuedAnnouncementAudio || new Audio(source);
+    queuedAnnouncementAudio = null;
 
     announcementAudio = audio;
     audio.preload = "auto";
@@ -1121,7 +1192,7 @@ function playAnnouncementAudio(activityId) {
     try {
         audio.currentTime = 0;
     } catch (error) {
-        // Audio may still be loading.
+        // The audio may still be loading.
     }
 
     function finishAnnouncement() {
