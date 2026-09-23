@@ -167,6 +167,33 @@ const activityAudioFiles = {
     23: "assets/audio/march_loop.mp3"
 };
 
+const announcementAudioFiles = {
+    1: "assets/audio/turn_up_the_volume.mp3",
+    2: "assets/audio/opera_style.mp3",
+    3: "assets/audio/robot_mode.mp3",
+    4: "assets/audio/overdramatic.mp3",
+    5: "assets/audio/body_builder.mp3",
+    6: "assets/audio/boys_vs_girls.mp3",
+    7: "assets/audio/leaders_vs_kids.mp3",
+    8: "assets/audio/echo_time.mp3",
+    9: "assets/audio/night_time.mp3",
+    10: "assets/audio/whisper_mode.mp3",
+    11: "assets/audio/slow_motion.mp3",
+    12: "assets/audio/speed_round.mp3",
+    13: "assets/audio/sleepy_style.mp3",
+    14: "assets/audio/ninja_style.mp3",
+    15: "assets/audio/circle_up.mp3",
+    16: "assets/audio/spin_around.mp3",
+    17: "assets/audio/groove_mode.mp3",
+    18: "assets/audio/spooky_time.mp3",
+    19: "assets/audio/shout_it_out.mp3",
+    20: "assets/audio/jump_around.mp3",
+    21: "assets/audio/pirate_style.mp3",
+    22: "assets/audio/statue_mode.mp3",
+    23: "assets/audio/soldier_march.mp3",
+    24: "assets/audio/happy_and_sad.mp3"
+};
+
 const AUDIO_FADE_MS = 1200;
 
 const titleImage = "assets/images/title.png";
@@ -239,6 +266,9 @@ let finalRevealRunning = false;
 
 let activityAudio = null;
 let audioFadeFrame = null;
+
+let announcementAudio = null;
+let announcementLocked = false;
 
 function getDefaultState() {
     return {
@@ -771,7 +801,7 @@ function stopHighlighting() {
 }
 
 function selectHighlightedActivity() {
-    if (finalRevealRunning) {
+    if (finalRevealRunning || announcementLocked) {
         return;
     }
 
@@ -791,6 +821,9 @@ function selectHighlightedActivity() {
     if (state.completed.includes(activityId)) {
         return;
     }
+
+    announcementLocked = true;
+    showOverlayControls(false);
 
     stopHighlighting();
 
@@ -860,6 +893,7 @@ function eliminateFinalRevealCards(cards, remainingActivityId, index) {
 
             saveState();
 
+            announcementLocked = true;
             finalRevealRunning = false;
             fadeCurrentScreen(renderWinner);
         }, 1400);
@@ -937,13 +971,80 @@ function createConfettiBurst(card) {
     }
 }
 
+function stopAnnouncementAudio() {
+    if (announcementAudio) {
+        announcementAudio.onended = null;
+        announcementAudio.onerror = null;
+        announcementAudio.pause();
+        announcementAudio = null;
+    }
+
+    announcementLocked = false;
+}
+
+function playAnnouncementAudio(activityId) {
+    stopAnnouncementAudio();
+
+    const source = announcementAudioFiles[activityId];
+    const letsGoButton = document.getElementById("letsGoButton");
+
+    if (!source || !letsGoButton) {
+        console.warn("Announcement audio or LET'S GO! button not found.");
+        return;
+    }
+
+    announcementLocked = true;
+    letsGoButton.disabled = true;
+    letsGoButton.textContent = "PLEASE WAIT...";
+    showOverlayControls(false);
+
+    const audio = new Audio(source);
+    announcementAudio = audio;
+    audio.preload = "auto";
+    audio.loop = false;
+
+    function finishAnnouncement() {
+        if (announcementAudio !== audio) {
+            return;
+        }
+
+        announcementAudio = null;
+        announcementLocked = false;
+
+        if (currentView === "winner") {
+            const button = document.getElementById("letsGoButton");
+
+            if (button) {
+                button.disabled = false;
+                button.textContent = "LET'S GO!";
+            }
+
+            setChromeMode("winner");
+        }
+    }
+
+    audio.onended = finishAnnouncement;
+
+    audio.onerror = () => {
+        console.warn("The announcement audio could not be loaded:", source);
+        finishAnnouncement();
+    };
+
+    audio.play().catch(error => {
+        console.warn("The announcement audio could not play:", error);
+        finishAnnouncement();
+    });
+}
+
 function renderWinner() {
     currentView = "winner";
     stopHighlighting();
     setChromeMode("winner");
 
     const activity = getActivity(state.currentSession?.activityId);
+
     if (!activity) {
+        stopAnnouncementAudio();
         state.currentSession = null;
         saveState();
         renderPrompt();
@@ -955,12 +1056,19 @@ function renderWinner() {
             <div class="winner-content">
                 <h1 class="winner-title">${activity.title}</h1>
                 <p class="winner-description">${activity.description}</p>
-                <button id="letsGoButton" class="lets-go-button" type="button">LET'S GO!</button>
+                <button
+                    id="letsGoButton"
+                    class="lets-go-button"
+                    type="button"
+                    disabled
+                >PLEASE WAIT...</button>
             </div>
         </section>
     `;
 
     document.getElementById("letsGoButton").addEventListener("click", handleAdvance);
+
+    playAnnouncementAudio(activity.id);
 }
 
 function beginSlides() {
@@ -1349,7 +1457,8 @@ function handleAdvance() {
     if (
         adminDialog.open ||
         currentView === "intro" ||
-        finalRevealRunning
+        finalRevealRunning ||
+        announcementLocked
     ) {
         return;
     }
@@ -1399,7 +1508,12 @@ function handleAdvance() {
 }
 
 function handleBack() {
-    if (adminDialog.open || !state.currentSession || state.currentSession.phase !== "slides") {
+    if (
+        announcementLocked ||
+        adminDialog.open ||
+        !state.currentSession ||
+        state.currentSession.phase !== "slides"
+    ) {
         return;
     }
 
@@ -1529,6 +1643,11 @@ document.addEventListener("keydown", event => {
     }
 
     if (adminDialog.open) {
+        return;
+    }
+
+    if (announcementLocked) {
+        event.preventDefault();
         return;
     }
 
