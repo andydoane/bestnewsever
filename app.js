@@ -982,14 +982,31 @@ function selectHighlightedActivity() {
     }
 
     const cards = [...document.querySelectorAll(".activity-card")];
-    if (!cards.length || highlightedIndex < 0 || !cards[highlightedIndex]) {
+
+    if (
+        !cards.length ||
+        highlightedIndex < 0 ||
+        !cards[highlightedIndex]
+    ) {
         return;
     }
 
     playBoardSelectionSound();
 
     if (state.currentSession?.finalRound) {
-        startFinalReveal();
+        const remainingActivity = activities.find(activity => {
+            return !state.completed.includes(activity.id);
+        });
+
+        if (!remainingActivity) {
+            return;
+        }
+
+        startSelectionCountdown(remainingActivity.id, () => {
+            endSelectionCountdown();
+            startFinalReveal();
+        });
+
         return;
     }
 
@@ -1013,9 +1030,12 @@ function selectHighlightedActivity() {
     state.currentSession.slideIndex = 0;
     saveState();
 
-    window.setTimeout(() => {
-        fadeCurrentScreen(renderWinner);
-    }, 300);
+    startSelectionCountdown(activityId, () => {
+        fadeCurrentScreen(() => {
+            endSelectionCountdown();
+            renderWinner();
+        });
+    });
 }
 
 function startFinalReveal() {
@@ -1597,6 +1617,13 @@ function restartProcess() {
     slideTransitioning = false;
     finalRevealRunning = false;
     stopActivityAudio();
+
+    endSelectionCountdown();
+
+    if (queuedAnnouncementAudio) {
+        queuedAnnouncementAudio.pause();
+        queuedAnnouncementAudio = null;
+    }
 
     state.currentSession = null;
 
