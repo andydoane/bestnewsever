@@ -270,6 +270,82 @@ let audioFadeFrame = null;
 let announcementAudio = null;
 let announcementLocked = false;
 
+let gameShowAudioContext = null;
+let boardTickCount = 0;
+
+function ensureGameShowAudio() {
+    try {
+        if (!gameShowAudioContext) {
+            const AudioContextClass =
+                window.AudioContext || window.webkitAudioContext;
+
+            if (!AudioContextClass) {
+                return;
+            }
+
+            gameShowAudioContext = new AudioContextClass();
+        }
+
+        if (gameShowAudioContext.state === "suspended") {
+            gameShowAudioContext.resume().catch(() => {});
+        }
+    } catch (error) {
+        console.warn("Game-show sound effects are unavailable.", error);
+    }
+}
+
+function playGameShowTone(frequency, duration, volume, delay = 0) {
+    const context = gameShowAudioContext;
+
+    if (!context || context.state !== "running") {
+        return;
+    }
+
+    const startTime = context.currentTime + delay;
+    const endTime = startTime + duration;
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(frequency, startTime);
+
+    gain.gain.setValueAtTime(0.0001, startTime);
+    gain.gain.exponentialRampToValueAtTime(
+        volume,
+        startTime + 0.006
+    );
+    gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        endTime
+    );
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+
+    oscillator.start(startTime);
+    oscillator.stop(endTime + 0.01);
+}
+
+function playBoardTick() {
+    const pitches = [740, 880, 740, 988];
+
+    const pitch = pitches[
+        boardTickCount % pitches.length
+    ];
+
+    boardTickCount += 1;
+
+    playGameShowTone(pitch, 0.055, 0.045);
+}
+
+function playBoardSelectionSound() {
+    ensureGameShowAudio();
+
+    playGameShowTone(660, 0.12, 0.11);
+    playGameShowTone(1046, 0.24, 0.13, 0.105);
+}
+
 function getDefaultState() {
     return {
         completed: [],
@@ -787,6 +863,7 @@ function startHighlighting() {
 
         highlightedIndex = Number(nextCard.dataset.index);
         nextCard.classList.add("active");
+        playBoardTick();
     }
 
     moveHighlight();
@@ -809,6 +886,8 @@ function selectHighlightedActivity() {
     if (!cards.length || highlightedIndex < 0 || !cards[highlightedIndex]) {
         return;
     }
+
+    playBoardSelectionSound();
 
     if (state.currentSession?.finalRound) {
         startFinalReveal();
@@ -1470,6 +1549,7 @@ function handleAdvance() {
     lastPressAt = now;
 
     if (!state.currentSession && currentView === "prompt") {
+        ensureGameShowAudio();
         enterFullscreen();
     }
 
